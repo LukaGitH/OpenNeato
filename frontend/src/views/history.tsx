@@ -58,7 +58,7 @@ export function HistoryView() {
             .finally(() => setLoading(false));
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Poll list + active recording session map (every 5s while recording)
+    // Poll list + active recording session map once per second while recording.
     usePoll(
         async () => {
             const fileList = await api.getHistoryList();
@@ -72,7 +72,7 @@ export function HistoryView() {
                 }
             }
         },
-        5000,
+        1000,
         hasRecording,
     );
 
@@ -158,6 +158,17 @@ export function HistoryView() {
             });
     }, [errorStack]);
 
+    const handleSaveMap = useCallback(
+        (idx: number) => {
+            const file = files[idx];
+            if (!file) return;
+            api.saveMap(file.name)
+                .then(() => navigate("/maps"))
+                .catch((e: unknown) => errorStack.push(normalizeError(e, "Failed to save map")));
+        },
+        [files, navigate, errorStack],
+    );
+
     const showDetail = selectedName !== null && selectedFile !== null;
 
     return (
@@ -214,6 +225,7 @@ export function HistoryView() {
                         onDeleteAll={handleDeleteAll}
                         onImported={handleImported}
                         onError={errorStack.push}
+                        onSaveMap={handleSaveMap}
                     />
                 )}
 
@@ -227,6 +239,7 @@ export function HistoryView() {
                         onDeleteAll={handleDeleteAll}
                         onImported={handleImported}
                         onError={errorStack.push}
+                        onSaveMap={handleSaveMap}
                     />
                 )}
 

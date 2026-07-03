@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "preact/hooks";
 import { api } from "../../api";
 import boltSvg from "../../assets/icons/bolt.svg?raw";
 import clockSvg from "../../assets/icons/clock.svg?raw";
+import databaseSvg from "../../assets/icons/database.svg?raw";
 import downloadSvg from "../../assets/icons/download.svg?raw";
 import trashSvg from "../../assets/icons/trash.svg?raw";
 import { ConfirmDialog } from "../../components/confirm-dialog";
@@ -19,9 +20,10 @@ interface SessionCardProps {
     active?: boolean;
     onSelect: (i: number) => void;
     onDelete: (i: number) => void;
+    onSaveMap?: (i: number) => void;
 }
 
-function SessionCard({ session, summary, filename, index, active, onSelect, onDelete }: SessionCardProps) {
+function SessionCard({ session, summary, filename, index, active, onSelect, onDelete, onSaveMap }: SessionCardProps) {
     const info = modeInfo(session?.mode ?? "");
     return (
         <div class={`history-session-row${active ? " running" : ""}`}>
@@ -64,6 +66,16 @@ function SessionCard({ session, summary, filename, index, active, onSelect, onDe
                     <Icon svg={downloadSvg} />
                 </a>
             )}
+            {!active && onSaveMap && (
+                <button
+                    type="button"
+                    class="history-session-download"
+                    onClick={() => onSaveMap(index)}
+                    aria-label="Save map"
+                >
+                    <Icon svg={databaseSvg} />
+                </button>
+            )}
             {!active && (
                 <button
                     type="button"
@@ -87,6 +99,9 @@ interface HistoryListViewProps {
     onDeleteAll: () => void;
     onImported: () => void;
     onError: (msg: string) => void;
+    onSaveMap?: (idx: number) => void;
+    showListActions?: boolean;
+    emptyLabel?: string;
 }
 
 type ImportStatus = "idle" | "uploading" | "done" | "error";
@@ -100,6 +115,9 @@ export function HistoryListView({
     onDeleteAll,
     onImported,
     onError,
+    onSaveMap,
+    showListActions = true,
+    emptyLabel = "No cleaning history yet",
 }: HistoryListViewProps) {
     const [confirmTarget, setConfirmTarget] = useState<string | null>(null);
     const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
@@ -182,39 +200,41 @@ export function HistoryListView({
                     {files.length} session{files.length !== 1 ? "s" : ""}
                     {hasRecording ? " · Running..." : ""}
                 </span>
-                <div class="history-summary-actions">
-                    <label class="history-import-label">
-                        <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept=".jsonl"
-                            class="history-import-input"
-                            disabled={importStatus === "uploading"}
-                            onChange={(e) => {
-                                const f = (e.target as HTMLInputElement).files?.[0];
-                                if (f) handleImportFile(f);
-                            }}
-                        />
-                        <span class={`history-import-btn${importStatus === "uploading" ? " pending" : ""}`}>
-                            {importStatus === "uploading"
-                                ? "Importing..."
-                                : importStatus === "done"
-                                  ? "Imported"
-                                  : "Import"}
-                        </span>
-                    </label>
-                    <button
-                        type="button"
-                        class={`history-delete-all-btn${deleting ? " pending" : ""}`}
-                        onClick={() => setConfirmTarget("__all__")}
-                        disabled={deleting}
-                    >
-                        Delete All
-                    </button>
-                </div>
+                {showListActions && (
+                    <div class="history-summary-actions">
+                        <label class="history-import-label">
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept=".jsonl"
+                                class="history-import-input"
+                                disabled={importStatus === "uploading"}
+                                onChange={(e) => {
+                                    const f = (e.target as HTMLInputElement).files?.[0];
+                                    if (f) handleImportFile(f);
+                                }}
+                            />
+                            <span class={`history-import-btn${importStatus === "uploading" ? " pending" : ""}`}>
+                                {importStatus === "uploading"
+                                    ? "Importing..."
+                                    : importStatus === "done"
+                                      ? "Imported"
+                                      : "Import"}
+                            </span>
+                        </label>
+                        <button
+                            type="button"
+                            class={`history-delete-all-btn${deleting ? " pending" : ""}`}
+                            onClick={() => setConfirmTarget("__all__")}
+                            disabled={deleting}
+                        >
+                            Delete All
+                        </button>
+                    </div>
+                )}
             </div>
 
-            {files.length === 0 && <div class="history-empty">No cleaning history yet</div>}
+            {files.length === 0 && <div class="history-empty">{emptyLabel}</div>}
 
             {/* Session cards */}
             {files.map((f, i) => (
@@ -227,6 +247,7 @@ export function HistoryListView({
                     active={f.recording}
                     onSelect={onSelect}
                     onDelete={() => setConfirmTarget(`session-${i}`)}
+                    onSaveMap={onSaveMap}
                 />
             ))}
 

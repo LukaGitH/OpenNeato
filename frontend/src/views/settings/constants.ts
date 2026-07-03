@@ -66,9 +66,32 @@ export const STALL_PRESETS: StallPreset[] = [
     { label: "30% (very sensitive)", value: 30 },
     { label: "40%", value: 40 },
     { label: "50%", value: 50 },
-    { label: "60% (recommended)", value: 60 },
+    { label: "60%", value: 60 },
     { label: "70%", value: 70 },
-    { label: "80% (less sensitive)", value: 80 },
+    { label: "80% (recommended)", value: 80 },
+];
+
+export interface ManualSpeedPreset {
+    label: string;
+    value: number;
+}
+
+export const MANUAL_SPEED_PRESETS: ManualSpeedPreset[] = [
+    { label: "60 mm/s (slow)", value: 60 },
+    { label: "90 mm/s", value: 90 },
+    { label: "120 mm/s (recommended)", value: 120 },
+];
+
+export interface ManualTurnPreset {
+    label: string;
+    value: number;
+}
+
+export const MANUAL_TURN_PRESETS: ManualTurnPreset[] = [
+    { label: "40% (gentle)", value: 40 },
+    { label: "60%", value: 60 },
+    { label: "80% (recommended)", value: 80 },
+    { label: "100% (sharp)", value: 100 },
 ];
 
 // Brush RPM presets — safe range 500-2000, above 2000 motor shuts off
@@ -124,7 +147,9 @@ export const DEFAULT_SERVER = {
     maxGpioPin: 21,
     hostname: "neato",
     navMode: "Normal",
-    stallThreshold: 60,
+    stallThreshold: 80,
+    manualSpeed: 120,
+    manualTurn: 80,
     brushRpm: 1200,
     vacuumSpeed: 80,
     sideBrushPower: 1500,

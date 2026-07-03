@@ -2993,12 +2993,6 @@ input:disabled {
     pointer-events: none;
 }
 
-.manual-motors {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-}
-
 .manual-motor-btn {
     display: flex;
     flex-direction: column;
@@ -3016,6 +3010,8 @@ input:disabled {
         background 0.15s,
         color 0.15s;
     -webkit-tap-highlight-color: transparent;
+    min-width: 64px;
+    align-self: center;
 }
 
 .manual-motor-btn > span {
@@ -3045,6 +3041,18 @@ input:disabled {
 
 .manual-stop-btn {
     width: 100%;
+}
+
+.manual-drive-controls {
+    display: grid;
+    grid-template-columns: 112px minmax(64px, 80px) 112px;
+    gap: 12px;
+    justify-items: center;
+    align-items: center;
+}
+
+.manual-axis-control {
+    min-width: 0;
 }
 
 /* Responsive — larger phones */

@@ -30,6 +30,8 @@ import type { FirmwareVersion, SystemData, UserSettingsData } from "../types";
 import { normalizeError } from "../utils";
 import {
     BRUSH_PRESETS,
+    MANUAL_SPEED_PRESETS,
+    MANUAL_TURN_PRESETS,
     NAV_MODE_PRESETS,
     SIDE_BRUSH_PRESETS,
     STALL_PRESETS,
@@ -102,6 +104,10 @@ export function SettingsView({ theme, onThemeChange, firmware }: SettingsViewPro
         setNavMode,
         stallThreshold,
         setStallThreshold,
+        manualSpeed,
+        setManualSpeed,
+        manualTurn,
+        setManualTurn,
         brushRpm,
         setBrushRpm,
         vacuumSpeed,
@@ -658,6 +664,42 @@ export function SettingsView({ theme, onThemeChange, firmware }: SettingsViewPro
                 </SettingsCategory>
 
                 <SettingsCategory title="Manual Clean" icon={manualSvg}>
+                    <div class="settings-section">
+                        <div class="settings-section-title">Drive Speed</div>
+                        <div class="settings-tz-select-wrap">
+                            <select
+                                class="settings-tz-select"
+                                value={manualSpeed}
+                                onChange={(e) => setManualSpeed(parseInt((e.target as HTMLSelectElement).value, 10))}
+                                disabled={saving}
+                            >
+                                {MANUAL_SPEED_PRESETS.map((p) => (
+                                    <option key={p.value} value={p.value}>
+                                        {p.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div class="settings-robot-time">Maximum wheel speed for manual driving</div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-section-title">Turn Response</div>
+                        <div class="settings-tz-select-wrap">
+                            <select
+                                class="settings-tz-select"
+                                value={manualTurn}
+                                onChange={(e) => setManualTurn(parseInt((e.target as HTMLSelectElement).value, 10))}
+                                disabled={saving}
+                            >
+                                {MANUAL_TURN_PRESETS.map((p) => (
+                                    <option key={p.value} value={p.value}>
+                                        {p.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div class="settings-robot-time">How strongly the turn control affects wheel distance</div>
+                    </div>
                     <div class="settings-section">
                         <div class="settings-section-title">Brush Speed</div>
                         <div class="settings-tz-select-wrap">
