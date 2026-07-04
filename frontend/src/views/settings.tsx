@@ -34,6 +34,8 @@ import type { FirmwareVersion, SystemData, UserSettingsData } from "../types";
 import { normalizeError } from "../utils";
 import {
     BRUSH_PRESETS,
+    MANUAL_SPEED_PRESETS,
+    MANUAL_TURN_PRESETS,
     NAV_MODE_PRESETS,
     SIDE_BRUSH_PRESETS,
     STALL_PRESETS,
@@ -127,6 +129,10 @@ export function SettingsView({
         setNavMode,
         stallThreshold,
         setStallThreshold,
+        manualSpeed,
+        setManualSpeed,
+        manualTurn,
+        setManualTurn,
         brushRpm,
         setBrushRpm,
         vacuumSpeed,
@@ -838,6 +844,46 @@ export function SettingsView({
                 </SettingsCategory>
 
                 <SettingsCategory title={t("Manual Clean")} icon={manualSvg}>
+                    <div class="settings-section">
+                        <div class="settings-tz-select-wrap">
+                            <select
+                                class="settings-tz-select"
+                                aria-label={t("Drive Speed")}
+                                value={manualSpeed}
+                                onChange={(e) => setManualSpeed(parseInt((e.target as HTMLSelectElement).value, 10))}
+                                disabled={saving}
+                            >
+                                {MANUAL_SPEED_PRESETS.map((p) => (
+                                    <option key={p.value} value={p.value}>
+                                        {t(p.label)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div class="settings-robot-time">
+                            <T>Maximum wheel speed for manual driving</T>
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <div class="settings-tz-select-wrap">
+                            <select
+                                class="settings-tz-select"
+                                aria-label={t("Turn Response")}
+                                value={manualTurn}
+                                onChange={(e) => setManualTurn(parseInt((e.target as HTMLSelectElement).value, 10))}
+                                disabled={saving}
+                            >
+                                {MANUAL_TURN_PRESETS.map((p) => (
+                                    <option key={p.value} value={p.value}>
+                                        {t(p.label)}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div class="settings-robot-time">
+                            <T>How strongly the turn control affects wheel distance</T>
+                        </div>
+                    </div>
                     <div class="settings-section">
                         <div class="settings-tz-select-wrap">
                             <select

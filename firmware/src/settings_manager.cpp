@@ -64,6 +64,8 @@ void SettingsManager::load() {
     current.brushRpm = prefs.getInt(NVS_KEY_MC_BRUSH_RPM, MANUAL_BRUSH_RPM);
     current.vacuumSpeed = prefs.getInt(NVS_KEY_MC_VACUUM_PCT, MANUAL_VACUUM_SPEED_PCT);
     current.sideBrushPower = prefs.getInt(NVS_KEY_MC_SBRUSH_MW, MANUAL_SIDE_BRUSH_POWER_MW);
+    current.manualSpeed = constrain(prefs.getInt(NVS_KEY_MC_DRIVE_SPEED, MANUAL_DRIVE_SPEED_MM_S), 60, 120);
+    current.manualTurn = prefs.getInt(NVS_KEY_MC_TURN_SCALE, MANUAL_TURN_SCALE_PCT);
     current.apFallbackOnDisconnect = prefs.getBool(NVS_KEY_AP_FALLBACK, true);
     current.syslogEnabled = prefs.getBool(NVS_KEY_SYSLOG_ENABLED, false);
     current.syslogIp = prefs.getString(NVS_KEY_SYSLOG_IP, "");
@@ -102,6 +104,8 @@ void SettingsManager::save() {
     prefs.putInt(NVS_KEY_MC_BRUSH_RPM, current.brushRpm);
     prefs.putInt(NVS_KEY_MC_VACUUM_PCT, current.vacuumSpeed);
     prefs.putInt(NVS_KEY_MC_SBRUSH_MW, current.sideBrushPower);
+    prefs.putInt(NVS_KEY_MC_DRIVE_SPEED, current.manualSpeed);
+    prefs.putInt(NVS_KEY_MC_TURN_SCALE, current.manualTurn);
     prefs.putBool(NVS_KEY_AP_FALLBACK, current.apFallbackOnDisconnect);
     prefs.putBool(NVS_KEY_SYSLOG_ENABLED, current.syslogEnabled);
     prefs.putString(NVS_KEY_SYSLOG_IP, current.syslogIp);
@@ -281,6 +285,16 @@ ApplyResult SettingsManager::apply(const String& json) {
         changed = true;
         LOG("SETTINGS", "Side brush power -> %d mW", current.sideBrushPower);
     }
+    if (incoming.manualSpeed != current.manualSpeed) {
+        current.manualSpeed = constrain(incoming.manualSpeed, 60, 120);
+        changed = true;
+        LOG("SETTINGS", "Manual speed -> %d mm/s", current.manualSpeed);
+    }
+    if (incoming.manualTurn != current.manualTurn) {
+        current.manualTurn = constrain(incoming.manualTurn, 40, 100);
+        changed = true;
+        LOG("SETTINGS", "Manual turn -> %d%%", current.manualTurn);
+    }
 
     if (incoming.apFallbackOnDisconnect != current.apFallbackOnDisconnect) {
         current.apFallbackOnDisconnect = incoming.apFallbackOnDisconnect;
@@ -418,6 +432,8 @@ std::vector<Field> Settings::toFields() const {
             {"brushRpm", String(brushRpm), FIELD_INT},
             {"vacuumSpeed", String(vacuumSpeed), FIELD_INT},
             {"sideBrushPower", String(sideBrushPower), FIELD_INT},
+            {"manualSpeed", String(manualSpeed), FIELD_INT},
+            {"manualTurn", String(manualTurn), FIELD_INT},
             {"apFallbackOnDisconnect", apFallbackOnDisconnect ? "true" : "false", FIELD_BOOL},
             {"syslogEnabled", syslogEnabled ? "true" : "false", FIELD_BOOL},
             {"syslogIp", syslogIp, FIELD_STRING},
@@ -497,6 +513,14 @@ bool Settings::fromFields(const std::vector<Field>& fields) {
     }
     if ((f = findField(fields, "sideBrushPower")) && f->type == FIELD_INT) {
         sideBrushPower = f->value.toInt();
+        applied = true;
+    }
+    if ((f = findField(fields, "manualSpeed")) && f->type == FIELD_INT) {
+        manualSpeed = f->value.toInt();
+        applied = true;
+    }
+    if ((f = findField(fields, "manualTurn")) && f->type == FIELD_INT) {
+        manualTurn = f->value.toInt();
         applied = true;
     }
     if ((f = findField(fields, "apFallbackOnDisconnect")) && f->type == FIELD_BOOL) {

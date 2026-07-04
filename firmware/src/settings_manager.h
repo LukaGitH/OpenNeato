@@ -34,6 +34,8 @@ struct Settings : public JsonSerializable {
     int brushRpm = MANUAL_BRUSH_RPM; // Main brush RPM (500-1600)
     int vacuumSpeed = MANUAL_VACUUM_SPEED_PCT; // Vacuum speed % (40-100)
     int sideBrushPower = MANUAL_SIDE_BRUSH_POWER_MW; // Side brush power in mW (500-1500)
+    int manualSpeed = MANUAL_DRIVE_SPEED_MM_S; // Max manual drive speed in mm/s (60-120)
+    int manualTurn = MANUAL_TURN_SCALE_PCT; // Manual turn authority in percent (40-100)
 
     // Fallback Access Point , when STA connection is lost, expose an AP for
     // browser-based reconfiguration. Always on when no STA credentials are

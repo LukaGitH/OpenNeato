@@ -93,9 +93,11 @@
 // Manual clean safety
 #define MANUAL_SAFETY_POLL_MS 500 // Poll bumpers every 500ms during manual clean
 #define MANUAL_STALL_POLL_MS 500 // Poll wheel load every 500ms while wheels are moving
-#define MANUAL_STALL_LOAD_PCT 60 // Wheel load % threshold — above this is considered stalled
-#define MANUAL_STALL_COUNT 2 // Consecutive overloaded polls before stopping (2 × 500ms = 1s grace)
+#define MANUAL_STALL_LOAD_PCT 80 // Wheel load % threshold — above this is considered stalled
+#define MANUAL_STALL_COUNT 6 // Consecutive overloaded polls before stopping (6 × 500ms = 3s grace)
 #define MANUAL_CLIENT_TIMEOUT_MS 5000 // Stop wheels if no API activity (any request) within this window
+#define MANUAL_DRIVE_SPEED_MM_S 120 // Default max manual wheel speed
+#define MANUAL_TURN_SCALE_PCT 80 // Default manual turn authority (%)
 #define MANUAL_BRUSH_RPM 1200 // Default brush RPM in manual mode
 #define MANUAL_VACUUM_SPEED_PCT 80 // Default vacuum speed (%) in manual mode
 #define MANUAL_SIDE_BRUSH_POWER_MW 1500 // Default side brush power (mW) — universal Neato Botvac default
@@ -169,6 +171,8 @@ enum CommandStatus {
 #define NVS_KEY_MC_BRUSH_RPM "mc_brush_rpm"
 #define NVS_KEY_MC_VACUUM_PCT "mc_vacuum_pct"
 #define NVS_KEY_MC_SBRUSH_MW "mc_sbrush_mw"
+#define NVS_KEY_MC_DRIVE_SPEED "mc_drive_spd"
+#define NVS_KEY_MC_TURN_SCALE "mc_turn_scale"
 
 // NVS keys — Remote syslog
 #define NVS_KEY_SYSLOG_ENABLED "syslog_on"

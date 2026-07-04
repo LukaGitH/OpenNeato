@@ -19,7 +19,9 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
     const [maxGpioPin, setMaxGpioPin] = useState(21);
     const [hostname, setHostname] = useState("neato");
     const [navMode, setNavMode] = useState("Normal");
-    const [stallThreshold, setStallThreshold] = useState(60);
+    const [stallThreshold, setStallThreshold] = useState(80);
+    const [manualSpeed, setManualSpeed] = useState(120);
+    const [manualTurn, setManualTurn] = useState(80);
     const [brushRpm, setBrushRpm] = useState(1200);
     const [vacuumSpeed, setVacuumSpeed] = useState(80);
     const [sideBrushPower, setSideBrushPower] = useState(1500);
@@ -62,6 +64,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
             setHostname(fetched.hostname);
             setNavMode(fetched.navMode ?? "Normal");
             setStallThreshold(fetched.stallThreshold);
+            setManualSpeed(fetched.manualSpeed ?? 120);
+            setManualTurn(fetched.manualTurn ?? 80);
             setBrushRpm(fetched.brushRpm);
             setVacuumSpeed(fetched.vacuumSpeed);
             setSideBrushPower(fetched.sideBrushPower);
@@ -98,6 +102,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
             hostname !== server.current.hostname ||
             navMode !== (server.current.navMode ?? "Normal") ||
             stallThreshold !== server.current.stallThreshold ||
+            manualSpeed !== (server.current.manualSpeed ?? 120) ||
+            manualTurn !== (server.current.manualTurn ?? 80) ||
             brushRpm !== server.current.brushRpm ||
             vacuumSpeed !== server.current.vacuumSpeed ||
             sideBrushPower !== server.current.sideBrushPower ||
@@ -165,6 +171,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         if (hostname !== server.current.hostname) patch.hostname = hostname;
         if (navMode !== (server.current.navMode ?? "Normal")) patch.navMode = navMode;
         if (stallThreshold !== server.current.stallThreshold) patch.stallThreshold = stallThreshold;
+        if (manualSpeed !== (server.current.manualSpeed ?? 120)) patch.manualSpeed = manualSpeed;
+        if (manualTurn !== (server.current.manualTurn ?? 80)) patch.manualTurn = manualTurn;
         if (brushRpm !== server.current.brushRpm) patch.brushRpm = brushRpm;
         if (vacuumSpeed !== server.current.vacuumSpeed) patch.vacuumSpeed = vacuumSpeed;
         if (sideBrushPower !== server.current.sideBrushPower) patch.sideBrushPower = sideBrushPower;
@@ -204,6 +212,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         hostname,
         navMode,
         stallThreshold,
+        manualSpeed,
+        manualTurn,
         brushRpm,
         vacuumSpeed,
         sideBrushPower,
@@ -279,6 +289,10 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         setNavMode,
         stallThreshold,
         setStallThreshold,
+        manualSpeed,
+        setManualSpeed,
+        manualTurn,
+        setManualTurn,
         brushRpm,
         setBrushRpm,
         vacuumSpeed,
