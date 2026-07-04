@@ -70,6 +70,40 @@ public:
         });
     }
 
+    // Return the latest cached value immediately, even if stale, and refresh in
+    // the background. If no cached value exists yet, behaves like get().
+    void getStaleWhileRefreshing(Callback callback) {
+        if (!hasValue) {
+            get(callback);
+            return;
+        }
+
+        unsigned long age = millis() - cachedAt;
+        if (hitFunc)
+            hitFunc(age);
+        if (callback)
+            callback(true, cached);
+
+        if (age < ttl || fetching)
+            return;
+
+        fetching = true;
+        fetcher([this](bool ok, const T& data) {
+            fetching = false;
+            if (ok) {
+                cached = data;
+                cachedAt = millis();
+                hasValue = true;
+            }
+
+            auto pending = std::move(waiters);
+            waiters.clear();
+            for (auto& cb: pending) {
+                cb(ok, ok ? cached : data);
+            }
+        });
+    }
+
     // Mark cached value as stale — next get() will trigger a fresh fetch.
     void invalidate() { hasValue = false; }
 

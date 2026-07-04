@@ -374,7 +374,7 @@ void NeatoSerial::getErrClear(std::function<void(bool, const ErrorData&)> callba
 }
 
 void NeatoSerial::getLdsScan(std::function<void(bool, const LdsScanData&)> callback) {
-    ldsCache.get(callback);
+    ldsCache.getStaleWhileRefreshing(callback);
 }
 
 void NeatoSerial::getRobotPos(bool smooth, std::function<void(bool, const RobotPosData&)> callback) {
