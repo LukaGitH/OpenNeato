@@ -58,7 +58,7 @@ export function HistoryView() {
             .finally(() => setLoading(false));
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Poll list + active recording session map (every 5s while recording)
+    // Poll list + active recording session map once per second while recording.
     usePoll(
         async () => {
             const fileList = await api.getHistoryList();
@@ -72,7 +72,7 @@ export function HistoryView() {
                 }
             }
         },
-        5000,
+        1000,
         hasRecording,
     );
 

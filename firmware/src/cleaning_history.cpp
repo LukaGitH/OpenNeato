@@ -1119,6 +1119,21 @@ std::shared_ptr<LogReader> CleaningHistory::readSession(const String& filename) 
     if (filename.endsWith(".hs")) {
         return std::make_shared<CompressedLogReader>(std::move(f));
     }
+
+    if (collecting && path == activeFilePath && !writeBuffer.empty()) {
+        String tail;
+        size_t total = 0;
+        for (const auto& line: writeBuffer) {
+            total += line.length() + 1;
+        }
+        tail.reserve(total);
+        for (const auto& line: writeBuffer) {
+            tail += line;
+            tail += '\n';
+        }
+        return std::make_shared<BufferedLogReader>(std::move(f), tail);
+    }
+
     return std::make_shared<PlainLogReader>(std::move(f));
 }
 
