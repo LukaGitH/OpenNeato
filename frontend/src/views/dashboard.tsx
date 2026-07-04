@@ -209,6 +209,15 @@ export function DashboardView({ firmware, state, isManual, updateInfo, robotRead
                     <button
                         type="button"
                         class="header-right-btn"
+                        aria-label="Saved Maps"
+                        onClick={() => navigate("/maps")}
+                        disabled={!robotReady}
+                    >
+                        <Icon svg={databaseSvg} />
+                    </button>
+                    <button
+                        type="button"
+                        class="header-right-btn"
                         aria-label="Settings"
                         onClick={() => navigate("/settings")}
                     >

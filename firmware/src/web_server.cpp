@@ -406,46 +406,38 @@ void WebServer::registerFirmwareRoutes() {
 
 void WebServer::registerMapRoutes() {
 
-    // GET /api/history[/filename] — list sessions, collection status, or download a specific file
-    server.on("/api/history", HTTP_GET, [this](AsyncWebServerRequest *request) {
-        lastApiActivity = millis();
-        unsigned long startMs = lastApiActivity;
-        String suffix = request->url().substring(String("/api/history/").length());
-
-        if (suffix.isEmpty()) {
-            // List all session files with embedded session/summary metadata
-            auto sessions = historyMgr.listSessions();
-            String json = "[";
-            for (size_t i = 0; i < sessions.size(); i++) {
-                if (i > 0)
-                    json += ",";
-                const auto& s = sessions[i];
-                json += R"({"name":")" + s.name + R"(","size":)" + String(static_cast<unsigned long>(s.size)) +
-                        R"(,"compressed":)" + String(s.compressed ? "true" : "false") + R"(,"recording":)" +
-                        String(s.recording ? "true" : "false");
-                if (s.session.length() > 0) {
-                    json += ",\"session\":" + s.session;
-                } else {
-                    json += ",\"session\":null";
-                }
-                if (s.summary.length() > 0) {
-                    json += ",\"summary\":" + s.summary;
-                } else {
-                    json += ",\"summary\":null";
-                }
-                json += "}";
+    auto sendMapFileList = [this](AsyncWebServerRequest *request, const std::vector<HistorySessionInfo>& files,
+                                  const char *route, unsigned long startMs) {
+        String json = "[";
+        for (size_t i = 0; i < files.size(); i++) {
+            if (i > 0)
+                json += ",";
+            const auto& s = files[i];
+            json += R"({"name":")" + s.name + R"(","size":)" + String(static_cast<unsigned long>(s.size)) +
+                    R"(,"compressed":)" + String(s.compressed ? "true" : "false") + R"(,"recording":)" +
+                    String(s.recording ? "true" : "false");
+            if (s.session.length() > 0) {
+                json += ",\"session\":" + s.session;
+            } else {
+                json += ",\"session\":null";
             }
-            json += "]";
-            logger.logRequest(HTTP_GET, "/api/history", 200, millis() - startMs);
-            request->send(200, "application/json", json);
-            return;
+            if (s.summary.length() > 0) {
+                json += ",\"summary\":" + s.summary;
+            } else {
+                json += ",\"summary\":null";
+            }
+            json += "}";
         }
+        json += "]";
+        logger.logRequest(HTTP_GET, route, 200, millis() - startMs);
+        request->send(200, "application/json", json);
+    };
 
-        // Download specific session
-        auto reader = historyMgr.readSession(suffix);
+    auto sendMapFile = [this](AsyncWebServerRequest *request, std::shared_ptr<LogReader> reader, const String& filename,
+                              unsigned long startMs, const char *missingMsg) {
         if (!reader) {
             logger.logRequest(HTTP_GET, request->url().c_str(), 404, millis() - startMs);
-            sendError(request, 404, "session not found");
+            sendError(request, 404, missingMsg);
             return;
         }
 
@@ -455,9 +447,26 @@ void WebServer::registerMapRoutes() {
                 "application/x-ndjson",
                 [reader](uint8_t *buffer, size_t maxLen, size_t) -> size_t { return reader->read(buffer, maxLen); });
 
-        response->addHeader("Content-Disposition", "attachment; filename=\"" + downloadName(suffix) + "\"");
+        response->addHeader("Content-Disposition", "attachment; filename=\"" + downloadName(filename) + "\"");
 
         request->send(response);
+    };
+
+    // GET /api/history[/filename] — list sessions, collection status, or download a specific file
+    server.on("/api/history", HTTP_GET, [this, sendMapFileList, sendMapFile](AsyncWebServerRequest *request) {
+        lastApiActivity = millis();
+        unsigned long startMs = lastApiActivity;
+        String suffix = request->url().substring(String("/api/history/").length());
+
+        if (suffix.isEmpty()) {
+            // List all session files with embedded session/summary metadata
+            auto sessions = historyMgr.listSessions();
+            sendMapFileList(request, sessions, "/api/history", startMs);
+            return;
+        }
+
+        // Download specific session
+        sendMapFile(request, historyMgr.readSession(suffix), suffix, startMs, "session not found");
     });
 
     // DELETE /api/history[/filename] — delete one or all sessions
@@ -513,6 +522,53 @@ void WebServer::registerMapRoutes() {
                     historyMgr.writeImportChunk(data, len);
                 }
             });
+
+    // GET/POST /api/maps[/filename] — saved map snapshots copied from history
+    server.on("/api/maps", HTTP_GET, [this, sendMapFileList, sendMapFile](AsyncWebServerRequest *request) {
+        lastApiActivity = millis();
+        unsigned long startMs = lastApiActivity;
+        String suffix = request->url().substring(String("/api/maps/").length());
+
+        if (suffix.isEmpty()) {
+            auto maps = historyMgr.listSavedMaps();
+            sendMapFileList(request, maps, "/api/maps", startMs);
+            return;
+        }
+
+        sendMapFile(request, historyMgr.readSavedMap(suffix), suffix, startMs, "map not found");
+    });
+
+    loggedRoute("/api/maps", HTTP_POST, [this](AsyncWebServerRequest *request) -> int {
+        if (!request->hasParam("source")) {
+            sendError(request, 400, "missing source");
+            return 400;
+        }
+
+        String source = request->getParam("source")->value();
+        if (historyMgr.saveMapFromSession(source)) {
+            sendOk(request);
+            return 200;
+        }
+
+        sendError(request, 400, "could not save map");
+        return 400;
+    });
+
+    loggedRoute("/api/maps", HTTP_DELETE, [this](AsyncWebServerRequest *request) -> int {
+        String filename = request->url().substring(String("/api/maps/").length());
+        if (filename.isEmpty()) {
+            sendError(request, 400, "missing filename");
+            return 400;
+        }
+
+        if (historyMgr.deleteSavedMap(filename)) {
+            sendOk(request);
+            return 200;
+        }
+
+        sendError(request, 404, "map not found");
+        return 404;
+    });
 
     LOG("WEB", "History routes registered");
 }

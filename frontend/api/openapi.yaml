@@ -873,6 +873,82 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/maps:
+    get:
+      tags:
+        - History
+      summary: List saved map snapshots with embedded session and summary metadata
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryFileInfo"
+    post:
+      tags:
+        - History
+      summary: Save a map snapshot from an existing history session
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          description: save failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/maps/{filename}:
+    get:
+      tags:
+        - History
+      summary: Download a saved map file (transparently decompressed)
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: application/x-ndjson
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        "404":
+          description: map not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - History
+      summary: Delete a saved map file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          description: map not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     Ok:

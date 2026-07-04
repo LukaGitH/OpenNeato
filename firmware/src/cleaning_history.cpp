@@ -1016,9 +1016,22 @@ void CleaningHistory::readFirstLastLines(const String& path, bool compressed, St
 }
 
 std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
+    return listFiles(HISTORY_DIR, true);
+}
+
+std::vector<HistorySessionInfo> CleaningHistory::listSavedMaps() {
+    return listFiles(MAPS_DIR, false);
+}
+
+bool CleaningHistory::validMapFilename(const String& filename) {
+    return (filename.endsWith(".jsonl") || filename.endsWith(".jsonl.hs")) && filename.indexOf('/') < 0 &&
+           filename.indexOf("..") < 0 && filename.length() <= 64;
+}
+
+std::vector<HistorySessionInfo> CleaningHistory::listFiles(const String& dir, bool includeActive) {
     std::vector<HistorySessionInfo> result;
 
-    File root = SPIFFS.open(HISTORY_DIR);
+    File root = SPIFFS.open(dir);
     if (!root || !root.isDirectory())
         return result;
 
@@ -1041,7 +1054,7 @@ std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
             // Skip the actively collecting file during disk enumeration.
             // We will manually append it at the end to avoid thread-safety /
             // concurrent modification issues with filesystem iterators.
-            if (collecting && fullPath == activeFilePath) {
+            if (includeActive && collecting && fullPath == activeFilePath) {
                 entry = root.openNextFile();
                 continue;
             }
@@ -1075,7 +1088,7 @@ std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
     }
 
     // Always append the active session from memory to ensure exactly one entry
-    if (collecting && !activeFilePath.isEmpty()) {
+    if (includeActive && collecting && !activeFilePath.isEmpty()) {
         String name = activeFilePath;
         int lastSlash = name.lastIndexOf('/');
         if (lastSlash >= 0)
@@ -1103,7 +1116,18 @@ std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
 }
 
 std::shared_ptr<LogReader> CleaningHistory::readSession(const String& filename) {
-    String path = String(HISTORY_DIR) + "/" + filename;
+    return readFile(HISTORY_DIR, filename);
+}
+
+std::shared_ptr<LogReader> CleaningHistory::readSavedMap(const String& filename) {
+    return readFile(MAPS_DIR, filename);
+}
+
+std::shared_ptr<LogReader> CleaningHistory::readFile(const String& dir, const String& filename) {
+    if (!validMapFilename(filename))
+        return nullptr;
+
+    String path = dir + "/" + filename;
 
     // Refuse to serve files involved in compression (partial .hs is corrupt)
     if (compressing && (path == compressSrcPath || path == compressDstPath))
@@ -1119,15 +1143,72 @@ std::shared_ptr<LogReader> CleaningHistory::readSession(const String& filename) 
     if (filename.endsWith(".hs")) {
         return std::make_shared<CompressedLogReader>(std::move(f));
     }
+
     return std::make_shared<PlainLogReader>(std::move(f));
 }
 
 bool CleaningHistory::deleteSession(const String& filename) {
-    String path = String(HISTORY_DIR) + "/" + filename;
+    return deleteFile(HISTORY_DIR, filename);
+}
+
+bool CleaningHistory::deleteSavedMap(const String& filename) {
+    return deleteFile(MAPS_DIR, filename);
+}
+
+bool CleaningHistory::deleteFile(const String& dir, const String& filename) {
+    if (!validMapFilename(filename))
+        return false;
+
+    String path = dir + "/" + filename;
     if (!SPIFFS.exists(path))
         return false;
     metaCache.erase(filename);
     return SPIFFS.remove(path);
+}
+
+bool CleaningHistory::saveMapFromSession(const String& filename) {
+    if (!validMapFilename(filename))
+        return false;
+
+    String srcPath = String(HISTORY_DIR) + "/" + filename;
+    String dstPath = String(MAPS_DIR) + "/" + filename;
+
+    if (compressing && (srcPath == compressSrcPath || srcPath == compressDstPath))
+        return false;
+    if (!SPIFFS.exists(srcPath) || SPIFFS.exists(dstPath))
+        return false;
+
+    File src = SPIFFS.open(srcPath, FILE_READ);
+    if (!src)
+        return false;
+
+    File dst = SPIFFS.open(dstPath, FILE_WRITE);
+    if (!dst) {
+        src.close();
+        return false;
+    }
+
+    uint8_t buf[512];
+    bool ok = true;
+    while (src.available()) {
+        size_t n = src.read(buf, sizeof(buf));
+        if (n == 0)
+            break;
+        if (dst.write(buf, n) != n) {
+            ok = false;
+            break;
+        }
+    }
+    src.close();
+    dst.close();
+
+    if (!ok) {
+        SPIFFS.remove(dstPath);
+        return false;
+    }
+
+    dataLogger.logGenericEvent("map_save", {{"path", dstPath, FIELD_STRING}});
+    return true;
 }
 
 void CleaningHistory::deleteAllSessions() {
