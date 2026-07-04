@@ -1430,6 +1430,12 @@ components:
         sideBrushPower:
           type: number
           description: Side brush power in mW (500-1500)
+        manualSpeed:
+          type: number
+          description: Max manual drive speed in mm/s (60-120)
+        manualTurn:
+          type: number
+          description: Manual turn authority percent (40-100)
         ntfyTopic:
           type: string
           description: ntfy.sh topic for push notifications (empty = disabled)
@@ -1560,6 +1566,8 @@ components:
         - brushRpm
         - vacuumSpeed
         - sideBrushPower
+        - manualSpeed
+        - manualTurn
         - ntfyTopic
         - ntfyServer
         - ntfyToken

@@ -10,12 +10,13 @@ interface JoystickProps {
     size: number;
     onMove: (value: JoystickValue) => void;
     onRelease: () => void;
+    axis?: "both" | "vertical" | "horizontal";
 }
 
 const KNOB_RATIO = 0.3; // knob radius as fraction of base radius
 const DEAD_ZONE = 0.08;
 
-export function Joystick({ size, onMove, onRelease }: JoystickProps) {
+export function Joystick({ size, onMove, onRelease, axis = "both" }: JoystickProps) {
     const baseRef = useRef<HTMLDivElement>(null);
     const [knobPos, setKnobPos] = useState({ x: 0, y: 0 });
     const activeTouch = useRef<number | null>(null);
@@ -32,36 +33,39 @@ export function Joystick({ size, onMove, onRelease }: JoystickProps) {
     onReleaseRef.current = onRelease;
     maxOffsetRef.current = maxOffset;
 
-    const processInput = useCallback((clientX: number, clientY: number) => {
-        const el = baseRef.current;
-        if (!el) return;
-        const rect = el.getBoundingClientRect();
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const mo = maxOffsetRef.current;
+    const processInput = useCallback(
+        (clientX: number, clientY: number) => {
+            const el = baseRef.current;
+            if (!el) return;
+            const rect = el.getBoundingClientRect();
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const mo = maxOffsetRef.current;
 
-        let dx = clientX - cx;
-        let dy = clientY - cy;
+            let dx = axis === "vertical" ? 0 : clientX - cx;
+            let dy = axis === "horizontal" ? 0 : clientY - cy;
 
-        // Clamp to circle
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist > mo) {
-            dx = (dx / dist) * mo;
-            dy = (dy / dist) * mo;
-        }
+            // Clamp to circle
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > mo) {
+                dx = (dx / dist) * mo;
+                dy = (dy / dist) * mo;
+            }
 
-        setKnobPos({ x: dx, y: dy });
+            setKnobPos({ x: dx, y: dy });
 
-        const nx = dx / mo;
-        const ny = -dy / mo; // invert Y: up = positive
-        const mag = Math.min(1, dist / mo);
+            const nx = dx / mo;
+            const ny = -dy / mo; // invert Y: up = positive
+            const mag = Math.min(1, dist / mo);
 
-        if (mag < DEAD_ZONE) {
-            onMoveRef.current({ x: 0, y: 0, magnitude: 0 });
-        } else {
-            onMoveRef.current({ x: nx, y: ny, magnitude: mag });
-        }
-    }, []);
+            if (mag < DEAD_ZONE) {
+                onMoveRef.current({ x: 0, y: 0, magnitude: 0 });
+            } else {
+                onMoveRef.current({ x: nx, y: ny, magnitude: mag });
+            }
+        },
+        [axis],
+    );
 
     const release = useCallback(() => {
         setKnobPos({ x: 0, y: 0 });
