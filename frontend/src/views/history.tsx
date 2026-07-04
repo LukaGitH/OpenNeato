@@ -165,6 +165,17 @@ export function HistoryView({ distanceUnit }: HistoryViewProps) {
             });
     }, [errorStack]);
 
+    const handleSaveMap = useCallback(
+        (idx: number) => {
+            const file = files[idx];
+            if (!file) return;
+            api.saveMap(file.name)
+                .then(() => navigate("/maps"))
+                .catch((e: unknown) => errorStack.push(normalizeError(e, "Failed to save map")));
+        },
+        [files, navigate, errorStack],
+    );
+
     const showDetail = selectedName !== null && selectedFile !== null;
 
     return (
@@ -231,6 +242,7 @@ export function HistoryView({ distanceUnit }: HistoryViewProps) {
                         onImported={handleImported}
                         onError={errorStack.push}
                         distanceUnit={distanceUnit}
+                        onSaveMap={handleSaveMap}
                     />
                 )}
 
@@ -245,6 +257,7 @@ export function HistoryView({ distanceUnit }: HistoryViewProps) {
                         onImported={handleImported}
                         onError={errorStack.push}
                         distanceUnit={distanceUnit}
+                        onSaveMap={handleSaveMap}
                     />
                 )}
 

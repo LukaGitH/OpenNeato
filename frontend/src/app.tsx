@@ -11,6 +11,7 @@ import { DashboardView } from "./views/dashboard";
 import { HistoryView } from "./views/history";
 import { LogsView } from "./views/logs";
 import { ManualView } from "./views/manual";
+import { SavedMapsView } from "./views/maps";
 import { ScheduleView } from "./views/schedule";
 import { SettingsView } from "./views/settings";
 
@@ -204,6 +205,9 @@ export function App() {
                 </Route>
                 <Route path="/history" prefix>
                     <HistoryView distanceUnit={distanceUnit} />
+                </Route>
+                <Route path="/maps" prefix>
+                    <SavedMapsView />
                 </Route>
             </Router>
         </I18nProvider>
