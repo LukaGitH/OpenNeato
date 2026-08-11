@@ -34,13 +34,7 @@ STEP 1: ANALYZE COMMITS
 - Fetch all commits between that tag and current HEAD
 - Analyze each commit for user-facing changes
 
-STEP 2: IDENTIFY CONTRIBUTORS
-- List commit authors from the commit range (git log --format='%aN')
-- Then go through merged PRs in the range (`gh pr list --state merged --search "merged:>=<date>"`) and examine each PR's comments and reviews
-- Identify testers and other non-code contributors (e.g., people who tested firmware, reported issues, provided feedback, or helped validate features)
-- Deduplicate and produce a single alphabetical list of GitHub usernames
-
-STEP 3: GENERATE RELEASE NOTES
+STEP 2: GENERATE RELEASE NOTES
 Create structured release notes with this EXACT format:
 
 ### Breaking Changes
@@ -56,9 +50,6 @@ Create structured release notes with this EXACT format:
 ### Bug Fixes
 - Fix description focusing on resolved user issue (abc1234)
 
-### Contributors
-- @username1, @username2, @username3
-
 REQUIREMENTS:
 - Focus ONLY on user-facing changes and impact
 - EXCLUDE: docs, build, ci, chore, refactor, test commits  
@@ -67,13 +58,13 @@ REQUIREMENTS:
 - Version logic: major.minor format only (no patch)
   - MINOR version (1.0 → 1.1): New features, bug fixes, improvements
   - MAJOR version (1.1 → 2.0): Breaking changes detected
-- Contributors section must include both code authors and testers/non-code contributors identified from PRs
+- Do not add a Contributors section; GitHub automatically attributes contributors
 - Show this preview BEFORE any actions
 
-STEP 4: SHOW PREVIEW
+STEP 3: SHOW PREVIEW
 Display the generated release notes and ask for approval before proceeding.
 
-STEP 5: TRIGGER WORKFLOW (after approval)
+STEP 4: TRIGGER WORKFLOW (after approval)
 Use `gh workflow run` to trigger the "Build and Release" workflow:
 
 ```bash
@@ -84,25 +75,23 @@ gh workflow run release.yml \
   -f prerelease=false
 ```
 
-Please start with Step 1 - analyze the commits, identify contributors, and show me the preview.
+Please start with Step 1 - analyze the commits and show me the preview.
 ```
 
 ## How It Works
 
 opencode will:
 1. **Analyze commits** since last release via `gh` CLI
-2. **Identify contributors** - commit authors plus testers and non-code contributors found by examining merged PRs
-3. **Generate release notes** with proper formatting, categorization, and a contributors section
-4. **Show preview** and ask for approval
-5. **Trigger GitHub Actions workflow** with the release notes
-6. The workflow **builds frontend** (npm), **builds firmware** (PlatformIO), then **GoReleaser** builds cross-platform flash tool binaries and publishes the GitHub Release with firmware packs attached
+2. **Generate release notes** with proper formatting and categorization
+3. **Show preview** and ask for approval
+4. **Trigger GitHub Actions workflow** with the release notes
+5. The workflow **builds frontend** (npm), **builds firmware** (PlatformIO), then **GoReleaser** builds cross-platform flash tool binaries and publishes the GitHub Release with firmware packs attached
 
 ## Features
 
 - **Automatic filtering** of technical commits (docs, tests, CI, etc.)
 - **User-focused** release notes with clear impact descriptions
 - **Smart versioning** - minor for features/fixes, major for breaking changes
-- **Contributor recognition** - code authors and testers/non-code contributors from PRs
 - **Preview before action** - human approval required
 - **Full build pipeline** - frontend, firmware, and flash tool all built in one workflow
 
