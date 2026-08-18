@@ -1,7 +1,9 @@
 {
   "domain": "openneato",
   "name": "OpenNeato",
-  "codeowners": ["@Leicas"],
+  "codeowners": [
+    "@Leicas"
+  ],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/renjfk/OpenNeato",

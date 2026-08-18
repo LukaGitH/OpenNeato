@@ -10,8 +10,19 @@
   `Day HH:MM` (upstream #141), `unknown` when the schedule is disabled.
 - **`auto_restart` switch** — config switch for the firmware's daily
   maintenance restart (`autoRestartEnabled`, upstream #129/#130).
+- **Floorplan background for the map cameras** — the `LIDAR map` and
+  `Cleaning replay` cameras can now render a user-supplied house floorplan
+  (local PNG/JPG) as the background instead of the default dark grid.
+  Configure the image path and calibrate origin (X/Y metres), rotation and
+  scale (px/m) from **Settings → Devices & Services → OpenNeato →
+  Configure**; changes apply on the next render without an HA restart. The
+  metric grid is hidden while a floorplan is active. Ported the renderer to
+  Pillow (HA Core already ships it, so no new dependency). Option flow added
+  via `OpenNeatoOptionsFlowHandler`; options propagate to the cameras through
+  an entry-reload-on-update listener. (Contributed by @Philou95.)
 
 ## 1.11
+
 
 ### Added
 - **`notify_on_start` switch** — surfaces fork PR #2's "notify on cleaning
