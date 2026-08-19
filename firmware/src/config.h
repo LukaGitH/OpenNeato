@@ -25,6 +25,7 @@
 // Pin Configuration — boot/reset button and default UART pins vary by chip.
 // Original ESP32: BOOT is GPIO0, GPIO1/3 are the USB-UART bridge (U0TXD/U0RXD).
 // ESP32-C3: BOOT is GPIO9, GPIO1/3 are free GPIOs.
+// Seeed Studio XIAO ESP32C3: D6/TX is GPIO21, D7/RX is GPIO20.
 // ESP32-S3: BOOT is GPIO0, GPIO19/20 are native USB — use free GPIOs for UART.
 #if CONFIG_IDF_TARGET_ESP32
 #define RESET_BUTTON_PIN 0
@@ -33,8 +34,13 @@
 #define MAX_GPIO_PIN 39
 #elif CONFIG_IDF_TARGET_ESP32C3
 #define RESET_BUTTON_PIN 9
+#if defined(OPENNEATO_BOARD_XIAO_ESP32C3)
+#define NEATO_DEFAULT_TX_PIN 21
+#define NEATO_DEFAULT_RX_PIN 20
+#else
 #define NEATO_DEFAULT_TX_PIN 3
 #define NEATO_DEFAULT_RX_PIN 4
+#endif
 #define MAX_GPIO_PIN 21
 #elif CONFIG_IDF_TARGET_ESP32C6
 #define RESET_BUTTON_PIN 9
@@ -52,7 +58,17 @@
 
 // Actual UART pins are stored in NVS and configurable via settings API.
 #define NEATO_BAUD_RATE 115200
-#define NEATO_UART_RX_BUFFER 4096 // Default 256 bytes overflows during GetLDSScan (~5KB response)
+// Must hold a whole GetLDSScan response, not most of one. Measured on a
+// Botvac D6 the reply is 6427 bytes; at 115200 baud it takes ~560 ms to
+// arrive, while 4096 bytes fill in 355 ms. The buffer is drained by
+// NeatoSerial::tick() from the main loop, so any stall longer than that --
+// an SPIFFS write, a WiFi retransmit -- dropped bytes mid-scan and the robot
+// reported UI_ERROR_LDS_MISSED_PACKETS. 8192 holds the full reply with room
+// to spare, for 4 KB of a 320 KB budget that is 18% used.
+#define NEATO_UART_RX_BUFFER 8192
+// Bytes reserved for the /api/lidar JSON document: 360 points at ~50 chars
+// plus the header, measured at 19355 on this robot, with headroom.
+#define LDS_JSON_RESERVE 20480
 
 // Neato command queue timing (milliseconds)
 #define NEATO_CMD_TIMEOUT_MS 3000
@@ -77,9 +93,11 @@
 // Manual clean safety
 #define MANUAL_SAFETY_POLL_MS 500 // Poll bumpers every 500ms during manual clean
 #define MANUAL_STALL_POLL_MS 500 // Poll wheel load every 500ms while wheels are moving
-#define MANUAL_STALL_LOAD_PCT 60 // Wheel load % threshold — above this is considered stalled
-#define MANUAL_STALL_COUNT 2 // Consecutive overloaded polls before stopping (2 × 500ms = 1s grace)
+#define MANUAL_STALL_LOAD_PCT 80 // Wheel load % threshold — above this is considered stalled
+#define MANUAL_STALL_COUNT 6 // Consecutive overloaded polls before stopping (6 × 500ms = 3s grace)
 #define MANUAL_CLIENT_TIMEOUT_MS 5000 // Stop wheels if no API activity (any request) within this window
+#define MANUAL_DRIVE_SPEED_MM_S 120 // Default max manual wheel speed
+#define MANUAL_TURN_SCALE_PCT 80 // Default manual turn authority (%)
 #define MANUAL_BRUSH_RPM 1200 // Default brush RPM in manual mode
 #define MANUAL_VACUUM_SPEED_PCT 80 // Default vacuum speed (%) in manual mode
 #define MANUAL_SIDE_BRUSH_POWER_MW 1500 // Default side brush power (mW) — universal Neato Botvac default
@@ -153,6 +171,8 @@ enum CommandStatus {
 #define NVS_KEY_MC_BRUSH_RPM "mc_brush_rpm"
 #define NVS_KEY_MC_VACUUM_PCT "mc_vacuum_pct"
 #define NVS_KEY_MC_SBRUSH_MW "mc_sbrush_mw"
+#define NVS_KEY_MC_DRIVE_SPEED "mc_drive_spd"
+#define NVS_KEY_MC_TURN_SCALE "mc_turn_scale"
 
 // NVS keys — Remote syslog
 #define NVS_KEY_SYSLOG_ENABLED "syslog_on"
@@ -173,23 +193,30 @@ enum CommandStatus {
 
 // NVS keys — Schedule (ESP32-managed, not robot serial)
 #define NVS_KEY_SCHED_ENABLED "sched_on"
+#define NVS_KEY_SKIP_NEXT_CLEAN "skip_next_clean"
+#define NVS_KEY_AUTO_RESTART_ENABLED "auto_rst_on"
+#define NVS_KEY_AUTO_RESTART_HOUR "auto_rst_h"
+#define NVS_KEY_AUTO_RESTART_MIN "auto_rst_m"
+#define NVS_KEY_RESTART_BEFORE_CLEAN "rst_b4_clean"
 // Per-day keys use suffix: "s0h","s0m","s0on" .. "s6h","s6m","s6on" (Mon=0..Sun=6)
 // Built programmatically in SettingsManager — no individual defines needed.
 #define SCHEDULE_DAYS 7
 #define SCHEDULE_SLOTS_PER_DAY 2 // Two time slots per day (e.g. morning + afternoon)
 #define SCHEDULE_CHECK_INTERVAL_MS 30000 // Check schedule against NTP time every 30s
 #define SCHEDULE_WINDOW_MINS 5 // Fire if current time is 0..N minutes after scheduled slot
+#define RESTART_BOOT_TIMEOUT_MS 120000 // Max wait time for robot to boot after restart (2 min)
 
 // Notification manager — adaptive polling intervals
 #define NOTIF_INTERVAL_ACTIVE_MS 3000 // Check state every 3s when robot is active (cleaning/docking)
 #define NOTIF_INTERVAL_IDLE_MS 30000 // Check state every 30s when robot is idle
 
 // Cleaning history
-#define HISTORY_INTERVAL_IDLE_MS 30000 // Poll state every 30s when idle (detect cleaning start)
-#define HISTORY_INTERVAL_ACTIVE_MS 2000 // Poll state/pose every 2s during active cleaning (~0.6m resolution at 300mm/s)
+#define HISTORY_INTERVAL_IDLE_MS 5000 // Poll state every 5s when idle (detect cleaning start)
+#define HISTORY_INTERVAL_ACTIVE_MS 1000 // Poll state/pose every 1s during active cleaning (~0.3m resolution at 300mm/s)
 #define HISTORY_FLUSH_INTERVAL_MS 30000 // Flush buffered pose snapshots to disk every 30 seconds
 #define HISTORY_COMPRESS_INTERVAL_MS 50 // Fast tick during post-session compression (512B/tick)
 #define HISTORY_DIR "/history" // SPIFFS directory for session files
+#define MAPS_DIR "/maps" // SPIFFS directory for saved map snapshots
 #define HISTORY_MAX_FS_PERCENT 50 // Delete oldest sessions when history dir exceeds this share of filesystem
 #define HISTORY_MIN_FS_PERCENT 10 // History always gets at least this % of filesystem
 #define HISTORY_MAX_FILES 20 // Maximum number of archived session files to keep

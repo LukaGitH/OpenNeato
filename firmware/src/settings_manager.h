@@ -34,6 +34,8 @@ struct Settings : public JsonSerializable {
     int brushRpm = MANUAL_BRUSH_RPM; // Main brush RPM (500-1600)
     int vacuumSpeed = MANUAL_VACUUM_SPEED_PCT; // Vacuum speed % (40-100)
     int sideBrushPower = MANUAL_SIDE_BRUSH_POWER_MW; // Side brush power in mW (500-1500)
+    int manualSpeed = MANUAL_DRIVE_SPEED_MM_S; // Max manual drive speed in mm/s (60-120)
+    int manualTurn = MANUAL_TURN_SCALE_PCT; // Manual turn authority in percent (40-100)
 
     // Fallback Access Point , when STA connection is lost, expose an AP for
     // browser-based reconfiguration. Always on when no STA credentials are
@@ -57,7 +59,16 @@ struct Settings : public JsonSerializable {
 
     // Schedule (ESP32-managed, not robot serial)
     bool scheduleEnabled = false;
-    SchedDay sched[SCHEDULE_DAYS]; // Sun=0 .. Sat=6
+    // Mon=0 .. Sun=6 — NOT the C library's Sun=0, which is what
+    // Scheduler::toSchedDay() converts from. Anything that indexes this with a
+    // tm_wday straight out of localtime_r() cleans on the wrong day.
+    SchedDay sched[SCHEDULE_DAYS];
+
+    // Daily maintenance automation
+    bool autoRestartEnabled = false;
+    int autoRestartHour = 3;
+    int autoRestartMinute = 0;
+    bool restartBeforeClean = false;
 
     std::vector<Field> toFields() const override;
     bool fromFields(const std::vector<Field>& fields) override;

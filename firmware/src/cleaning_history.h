@@ -60,6 +60,10 @@ public:
     std::shared_ptr<LogReader> readSession(const String& filename);
     bool deleteSession(const String& filename);
     void deleteAllSessions();
+    std::vector<HistorySessionInfo> listSavedMaps();
+    std::shared_ptr<LogReader> readSavedMap(const String& filename);
+    bool saveMapFromSession(const String& filename);
+    bool deleteSavedMap(const String& filename);
 
     // Last completed session stats (for notification enrichment)
     const LastCleanStats& getLastCleanStats() const { return lastCleanStats; }
@@ -152,7 +156,7 @@ private:
     unsigned long lastFlushMs = 0;
     void writeSessionHeader();
     void writeSessionSummary(int batteryEnd);
-    void writeSnapshot(float x, float y, float theta, float time);
+    void writeSnapshot(float x, float y, float theta, float time, int brushRPM);
     void updateAccumulators(float x, float y, float theta);
     void resetSession();
     bool replayLine(const String& line);
@@ -172,6 +176,10 @@ private:
 
     // Read first and last lines from a session file (decompresses .hs files)
     static void readFirstLastLines(const String& path, bool compressed, String& firstLine, String& lastLine);
+    std::vector<HistorySessionInfo> listFiles(const String& dir, bool includeActive);
+    std::shared_ptr<LogReader> readFile(const String& dir, const String& filename);
+    bool deleteFile(const String& dir, const String& filename);
+    static bool validMapFilename(const String& filename);
 
     // -- Metadata cache (avoids repeated decompression for listSessions) ------
     // Keyed by filename (e.g. "1771683615.jsonl.hs"). Populated on first list

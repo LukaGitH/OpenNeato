@@ -30,9 +30,10 @@ static const char *logLevelStr(int level) {
 
 void SettingsManager::begin() {
     load();
-    LOG("SETTINGS", "Loaded: hostname=%s tz=%s logLevel=%s txPower=%d (%.1f dBm) uart=TX%d/RX%d sched=%s",
+    LOG("SETTINGS", "Loaded: hostname=%s tz=%s logLevel=%s txPower=%d (%.1f dBm) uart=TX%d/RX%d sched=%s maint=%s",
         current.hostname.c_str(), current.tz.c_str(), logLevelStr(current.logLevel), current.wifiTxPower,
-        current.wifiTxPower * 0.25f, current.uartTxPin, current.uartRxPin, current.scheduleEnabled ? "on" : "off");
+        current.wifiTxPower * 0.25f, current.uartTxPin, current.uartRxPin, current.scheduleEnabled ? "on" : "off",
+        current.autoRestartEnabled ? "on" : "off");
 }
 
 // -- Persistence -------------------------------------------------------------
@@ -63,6 +64,8 @@ void SettingsManager::load() {
     current.brushRpm = prefs.getInt(NVS_KEY_MC_BRUSH_RPM, MANUAL_BRUSH_RPM);
     current.vacuumSpeed = prefs.getInt(NVS_KEY_MC_VACUUM_PCT, MANUAL_VACUUM_SPEED_PCT);
     current.sideBrushPower = prefs.getInt(NVS_KEY_MC_SBRUSH_MW, MANUAL_SIDE_BRUSH_POWER_MW);
+    current.manualSpeed = constrain(prefs.getInt(NVS_KEY_MC_DRIVE_SPEED, MANUAL_DRIVE_SPEED_MM_S), 60, 120);
+    current.manualTurn = prefs.getInt(NVS_KEY_MC_TURN_SCALE, MANUAL_TURN_SCALE_PCT);
     current.apFallbackOnDisconnect = prefs.getBool(NVS_KEY_AP_FALLBACK, true);
     current.syslogEnabled = prefs.getBool(NVS_KEY_SYSLOG_ENABLED, false);
     current.syslogIp = prefs.getString(NVS_KEY_SYSLOG_IP, "");
@@ -76,6 +79,10 @@ void SettingsManager::load() {
     current.ntfyOnAlert = prefs.getBool(NVS_KEY_NTFY_ON_ALERT, true);
     current.ntfyOnDocking = prefs.getBool(NVS_KEY_NTFY_ON_DOCK, true);
     current.scheduleEnabled = prefs.getBool(NVS_KEY_SCHED_ENABLED, false);
+    current.autoRestartEnabled = prefs.getBool(NVS_KEY_AUTO_RESTART_ENABLED, false);
+    current.autoRestartHour = prefs.getInt(NVS_KEY_AUTO_RESTART_HOUR, 3);
+    current.autoRestartMinute = prefs.getInt(NVS_KEY_AUTO_RESTART_MIN, 0);
+    current.restartBeforeClean = prefs.getBool(NVS_KEY_RESTART_BEFORE_CLEAN, false);
     for (int d = 0; d < SCHEDULE_DAYS; d++) {
         for (int s = 0; s < SCHEDULE_SLOTS_PER_DAY; s++) {
             current.sched[d].slots[s].hour = prefs.getInt(schedKey(d, s, "h").c_str(), 0);
@@ -97,6 +104,8 @@ void SettingsManager::save() {
     prefs.putInt(NVS_KEY_MC_BRUSH_RPM, current.brushRpm);
     prefs.putInt(NVS_KEY_MC_VACUUM_PCT, current.vacuumSpeed);
     prefs.putInt(NVS_KEY_MC_SBRUSH_MW, current.sideBrushPower);
+    prefs.putInt(NVS_KEY_MC_DRIVE_SPEED, current.manualSpeed);
+    prefs.putInt(NVS_KEY_MC_TURN_SCALE, current.manualTurn);
     prefs.putBool(NVS_KEY_AP_FALLBACK, current.apFallbackOnDisconnect);
     prefs.putBool(NVS_KEY_SYSLOG_ENABLED, current.syslogEnabled);
     prefs.putString(NVS_KEY_SYSLOG_IP, current.syslogIp);
@@ -110,6 +119,10 @@ void SettingsManager::save() {
     prefs.putBool(NVS_KEY_NTFY_ON_ALERT, current.ntfyOnAlert);
     prefs.putBool(NVS_KEY_NTFY_ON_DOCK, current.ntfyOnDocking);
     prefs.putBool(NVS_KEY_SCHED_ENABLED, current.scheduleEnabled);
+    prefs.putBool(NVS_KEY_AUTO_RESTART_ENABLED, current.autoRestartEnabled);
+    prefs.putInt(NVS_KEY_AUTO_RESTART_HOUR, current.autoRestartHour);
+    prefs.putInt(NVS_KEY_AUTO_RESTART_MIN, current.autoRestartMinute);
+    prefs.putBool(NVS_KEY_RESTART_BEFORE_CLEAN, current.restartBeforeClean);
     for (int d = 0; d < SCHEDULE_DAYS; d++) {
         for (int s = 0; s < SCHEDULE_SLOTS_PER_DAY; s++) {
             prefs.putInt(schedKey(d, s, "h").c_str(), current.sched[d].slots[s].hour);
@@ -142,26 +155,50 @@ const Settings& SettingsManager::get() {
 
 // -- Partial update ----------------------------------------------------------
 
+// Non-empty, max 32 chars, alphanumeric + hyphens only.
+static bool isValidHostname(const String& h) {
+    if (h.length() == 0 || h.length() > 32)
+        return false;
+    for (unsigned int i = 0; i < h.length(); i++) {
+        char c = h.charAt(i);
+        if (!isalnum(c) && c != '-')
+            return false;
+    }
+    return true;
+}
+
 ApplyResult SettingsManager::apply(const String& json) {
     Settings incoming = current; // start from current values
     if (!incoming.fromJson(json))
         return APPLY_INVALID;
 
+    // Validate everything that can be rejected before touching anything.
+    //
+    // The rest of this function mutates `current` field by field, so a value
+    // rejected halfway through used to leave every field before it already
+    // applied while the caller was told the whole request had failed. That was
+    // survivable when a schedule was a curiosity; now that Home Assistant
+    // exposes all fourteen slots, one bad hour in a request would quietly
+    // commit whatever came before it.
+    if (!isValidHostname(incoming.hostname))
+        return APPLY_INVALID;
+    if (incoming.uartTxPin == incoming.uartRxPin &&
+        (incoming.uartTxPin != current.uartTxPin || incoming.uartRxPin != current.uartRxPin)) {
+        LOG("SETTINGS", "Rejected: TX and RX cannot be the same pin (GPIO%d)", incoming.uartTxPin);
+        return APPLY_INVALID;
+    }
+    for (const SchedDay& day: incoming.sched) {
+        for (const SchedSlot& slot: day.slots) {
+            if (slot.hour < 0 || slot.hour > 23 || slot.minute < 0 || slot.minute > 59)
+                return APPLY_INVALID;
+        }
+    }
+
     bool changed = false;
     bool needReboot = false;
 
     if (incoming.hostname != current.hostname) {
-        // Validate: non-empty, max 32 chars, alphanumeric + hyphens only
-        String h = incoming.hostname;
-        bool valid = h.length() > 0 && h.length() <= 32;
-        for (unsigned int i = 0; valid && i < h.length(); i++) {
-            char c = h.charAt(i);
-            if (!isalnum(c) && c != '-')
-                valid = false;
-        }
-        if (!valid)
-            return APPLY_INVALID;
-        current.hostname = h;
+        current.hostname = incoming.hostname;
         changed = true;
         needReboot = true;
         LOG("SETTINGS", "Hostname -> %s (reboot required)", current.hostname.c_str());
@@ -202,15 +239,6 @@ ApplyResult SettingsManager::apply(const String& json) {
     }
 
     // UART pin changes require reboot — hardware UART can't be reconfigured at runtime
-    int newTx = incoming.uartTxPin != current.uartTxPin ? incoming.uartTxPin : current.uartTxPin;
-    int newRx = incoming.uartRxPin != current.uartRxPin ? incoming.uartRxPin : current.uartRxPin;
-
-    // Reject if TX and RX would be the same pin
-    if (newTx == newRx && (incoming.uartTxPin != current.uartTxPin || incoming.uartRxPin != current.uartRxPin)) {
-        LOG("SETTINGS", "Rejected: TX and RX cannot be the same pin (GPIO%d)", newTx);
-        return APPLY_INVALID;
-    }
-
     if (incoming.uartTxPin != current.uartTxPin && incoming.uartTxPin >= 0 && incoming.uartTxPin <= MAX_GPIO_PIN) {
         current.uartTxPin = incoming.uartTxPin;
         changed = true;
@@ -256,6 +284,16 @@ ApplyResult SettingsManager::apply(const String& json) {
         current.sideBrushPower = constrain(incoming.sideBrushPower, 500, 1500);
         changed = true;
         LOG("SETTINGS", "Side brush power -> %d mW", current.sideBrushPower);
+    }
+    if (incoming.manualSpeed != current.manualSpeed) {
+        current.manualSpeed = constrain(incoming.manualSpeed, 60, 120);
+        changed = true;
+        LOG("SETTINGS", "Manual speed -> %d mm/s", current.manualSpeed);
+    }
+    if (incoming.manualTurn != current.manualTurn) {
+        current.manualTurn = constrain(incoming.manualTurn, 40, 100);
+        changed = true;
+        LOG("SETTINGS", "Manual turn -> %d%%", current.manualTurn);
     }
 
     if (incoming.apFallbackOnDisconnect != current.apFallbackOnDisconnect) {
@@ -330,14 +368,34 @@ ApplyResult SettingsManager::apply(const String& json) {
         LOG("SETTINGS", "Schedule -> %s", current.scheduleEnabled ? "on" : "off");
     }
 
+    if (incoming.autoRestartEnabled != current.autoRestartEnabled) {
+        current.autoRestartEnabled = incoming.autoRestartEnabled;
+        changed = true;
+        LOG("SETTINGS", "Maintenance restart -> %s", current.autoRestartEnabled ? "on" : "off");
+    }
+    if (incoming.autoRestartHour != current.autoRestartHour ||
+        incoming.autoRestartMinute != current.autoRestartMinute) {
+        if (incoming.autoRestartHour < 0 || incoming.autoRestartHour > 23 || incoming.autoRestartMinute < 0 ||
+            incoming.autoRestartMinute > 59) {
+            return APPLY_INVALID;
+        }
+        current.autoRestartHour = incoming.autoRestartHour;
+        current.autoRestartMinute = incoming.autoRestartMinute;
+        changed = true;
+        LOG("SETTINGS", "Maintenance restart time -> %02d:%02d", current.autoRestartHour, current.autoRestartMinute);
+    }
+    if (incoming.restartBeforeClean != current.restartBeforeClean) {
+        current.restartBeforeClean = incoming.restartBeforeClean;
+        changed = true;
+        LOG("SETTINGS", "Restart before clean -> %s", current.restartBeforeClean ? "on" : "off");
+    }
+
     for (int d = 0; d < SCHEDULE_DAYS; d++) { // NOLINT(modernize-loop-convert) index needed for DAY_NAMES[d]
         for (int s = 0; s < SCHEDULE_SLOTS_PER_DAY; s++) {
             SchedSlot& cur = current.sched[d].slots[s];
             const SchedSlot& inc = incoming.sched[d].slots[s];
             if (inc.hour != cur.hour || inc.minute != cur.minute || inc.on != cur.on) {
-                // Validate hour/minute ranges
-                if (inc.hour < 0 || inc.hour > 23 || inc.minute < 0 || inc.minute > 59)
-                    return APPLY_INVALID;
+                // Ranges were checked up front, before anything was mutated.
                 cur.hour = inc.hour;
                 cur.minute = inc.minute;
                 cur.on = inc.on;
@@ -374,6 +432,8 @@ std::vector<Field> Settings::toFields() const {
             {"brushRpm", String(brushRpm), FIELD_INT},
             {"vacuumSpeed", String(vacuumSpeed), FIELD_INT},
             {"sideBrushPower", String(sideBrushPower), FIELD_INT},
+            {"manualSpeed", String(manualSpeed), FIELD_INT},
+            {"manualTurn", String(manualTurn), FIELD_INT},
             {"apFallbackOnDisconnect", apFallbackOnDisconnect ? "true" : "false", FIELD_BOOL},
             {"syslogEnabled", syslogEnabled ? "true" : "false", FIELD_BOOL},
             {"syslogIp", syslogIp, FIELD_STRING},
@@ -387,6 +447,10 @@ std::vector<Field> Settings::toFields() const {
             {"ntfyOnAlert", ntfyOnAlert ? "true" : "false", FIELD_BOOL},
             {"ntfyOnDocking", ntfyOnDocking ? "true" : "false", FIELD_BOOL},
             {"scheduleEnabled", scheduleEnabled ? "true" : "false", FIELD_BOOL},
+            {"autoRestartEnabled", autoRestartEnabled ? "true" : "false", FIELD_BOOL},
+            {"autoRestartHour", String(autoRestartHour), FIELD_INT},
+            {"autoRestartMinute", String(autoRestartMinute), FIELD_INT},
+            {"restartBeforeClean", restartBeforeClean ? "true" : "false", FIELD_BOOL},
     };
     for (int d = 0; d < SCHEDULE_DAYS; d++) {
         for (int s = 0; s < SCHEDULE_SLOTS_PER_DAY; s++) {
@@ -451,6 +515,14 @@ bool Settings::fromFields(const std::vector<Field>& fields) {
         sideBrushPower = f->value.toInt();
         applied = true;
     }
+    if ((f = findField(fields, "manualSpeed")) && f->type == FIELD_INT) {
+        manualSpeed = f->value.toInt();
+        applied = true;
+    }
+    if ((f = findField(fields, "manualTurn")) && f->type == FIELD_INT) {
+        manualTurn = f->value.toInt();
+        applied = true;
+    }
     if ((f = findField(fields, "apFallbackOnDisconnect")) && f->type == FIELD_BOOL) {
         apFallbackOnDisconnect = (f->value == "true");
         applied = true;
@@ -501,6 +573,22 @@ bool Settings::fromFields(const std::vector<Field>& fields) {
     }
     if ((f = findField(fields, "scheduleEnabled")) && f->type == FIELD_BOOL) {
         scheduleEnabled = (f->value == "true");
+        applied = true;
+    }
+    if ((f = findField(fields, "autoRestartEnabled")) && f->type == FIELD_BOOL) {
+        autoRestartEnabled = (f->value == "true");
+        applied = true;
+    }
+    if ((f = findField(fields, "autoRestartHour")) && f->type == FIELD_INT) {
+        autoRestartHour = f->value.toInt();
+        applied = true;
+    }
+    if ((f = findField(fields, "autoRestartMinute")) && f->type == FIELD_INT) {
+        autoRestartMinute = f->value.toInt();
+        applied = true;
+    }
+    if ((f = findField(fields, "restartBeforeClean")) && f->type == FIELD_BOOL) {
+        restartBeforeClean = (f->value == "true");
         applied = true;
     }
     for (int d = 0; d < SCHEDULE_DAYS; d++) { // NOLINT(modernize-loop-convert) index needed for field name prefix

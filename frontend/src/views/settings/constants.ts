@@ -12,7 +12,7 @@ interface TxPowerPreset {
     value: number;
 }
 
-// Common timezone presets — label shown in UI, value is POSIX TZ string
+// Common timezone presets - label shown in UI, value is POSIX TZ string
 // Zones with DST show both offsets (standard/summer) to avoid confusion
 export const TIMEZONE_PRESETS: TimezonePreset[] = [
     { label: "UTC (UTC+0)", tz: "UTC0", std: "UTC" },
@@ -33,7 +33,7 @@ export const TIMEZONE_PRESETS: TimezonePreset[] = [
     { label: "New Zealand (UTC+12/+13)", tz: "NZST-12NZDT,M9.5.0,M4.1.0/3", std: "NZST", dst: "NZDT" },
 ];
 
-// WiFi TX power presets — value is in 0.25 dBm units (ESP32 wifi_power_t)
+// WiFi TX power presets - value is in 0.25 dBm units (ESP32 wifi_power_t)
 export const TX_POWER_PRESETS: TxPowerPreset[] = [
     { label: "8.5 dBm (low power)", value: 34 },
     { label: "11 dBm", value: 44 },
@@ -43,7 +43,7 @@ export const TX_POWER_PRESETS: TxPowerPreset[] = [
     { label: "19.5 dBm (max range)", value: 78 },
 ];
 
-// Navigation mode presets — sent to robot before each house clean
+// Navigation mode presets - sent to robot before each house clean
 export interface NavModePreset {
     label: string;
     value: string;
@@ -56,7 +56,7 @@ export const NAV_MODE_PRESETS: NavModePreset[] = [
     { label: "Quick", value: "Quick" },
 ];
 
-// Stall detection presets — wheel load % threshold
+// Stall detection presets - wheel load % threshold
 export interface StallPreset {
     label: string;
     value: number;
@@ -66,12 +66,35 @@ export const STALL_PRESETS: StallPreset[] = [
     { label: "30% (very sensitive)", value: 30 },
     { label: "40%", value: 40 },
     { label: "50%", value: 50 },
-    { label: "60% (recommended)", value: 60 },
+    { label: "60%", value: 60 },
     { label: "70%", value: 70 },
-    { label: "80% (less sensitive)", value: 80 },
+    { label: "80% (recommended)", value: 80 },
 ];
 
-// Brush RPM presets — safe range 500-2000, above 2000 motor shuts off
+export interface ManualSpeedPreset {
+    label: string;
+    value: number;
+}
+
+export const MANUAL_SPEED_PRESETS: ManualSpeedPreset[] = [
+    { label: "60 mm/s (slow)", value: 60 },
+    { label: "90 mm/s", value: 90 },
+    { label: "120 mm/s (recommended)", value: 120 },
+];
+
+export interface ManualTurnPreset {
+    label: string;
+    value: number;
+}
+
+export const MANUAL_TURN_PRESETS: ManualTurnPreset[] = [
+    { label: "40% (gentle)", value: 40 },
+    { label: "60%", value: 60 },
+    { label: "80% (recommended)", value: 80 },
+    { label: "100% (sharp)", value: 100 },
+];
+
+// Brush RPM presets - safe range 500-2000, above 2000 motor shuts off
 export interface BrushPreset {
     label: string;
     value: number;
@@ -85,7 +108,7 @@ export const BRUSH_PRESETS: BrushPreset[] = [
     { label: "1600 RPM (high)", value: 1600 },
 ];
 
-// Vacuum speed presets — 1-100%
+// Vacuum speed presets - 1-100%
 export interface VacuumPreset {
     label: string;
     value: number;
@@ -99,7 +122,7 @@ export const VACUUM_PRESETS: VacuumPreset[] = [
     { label: "100% (turbo)", value: 100 },
 ];
 
-// Side brush power presets — milliwatts, open-loop
+// Side brush power presets - milliwatts, open-loop
 export interface SideBrushPreset {
     label: string;
     value: number;
@@ -124,7 +147,9 @@ export const DEFAULT_SERVER = {
     maxGpioPin: 21,
     hostname: "neato",
     navMode: "Normal",
-    stallThreshold: 60,
+    stallThreshold: 80,
+    manualSpeed: 120,
+    manualTurn: 80,
     brushRpm: 1200,
     vacuumSpeed: 80,
     sideBrushPower: 1500,
@@ -137,4 +162,8 @@ export const DEFAULT_SERVER = {
     ntfyOnError: true,
     ntfyOnAlert: true,
     ntfyOnDocking: true,
+    autoRestartEnabled: false,
+    autoRestartHour: 3,
+    autoRestartMinute: 0,
+    restartBeforeClean: false,
 } as SettingsData;

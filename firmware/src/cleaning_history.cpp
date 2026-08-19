@@ -824,7 +824,23 @@ void CleaningHistory::collectSnapshot() {
                     return;
                 }
 
-                writeSnapshot(x, y, theta, time);
+                // Brush speed rides along with the pose.
+                //
+                // A snapshot says where the robot was, never whether it was
+                // actually cleaning there. It moves with the brush stopped
+                // more often than it looks: picked up, recovering from an
+                // error, repositioning. Measured on this robot, the brush
+                // turns at ~1400 rpm while following a boundary and sits at
+                // exactly 0 in ST_F5_PickedUp and ST_F6_CleaningErrRecovery,
+                // both of which occur mid-session. Without this the replay
+                // paints those stretches as cleaned floor.
+                //
+                // The raw rpm is recorded rather than a cleaned/not flag, so
+                // the threshold can be revisited without reflashing, and so
+                // states nobody has observed yet still come out right.
+                neato.getMotors([this, x, y, theta, time](bool motorsOk, const MotorData& motors) {
+                    writeSnapshot(x, y, theta, time, motorsOk ? motors.brushRPM : -1);
+                });
             });
         });
     });
@@ -868,7 +884,7 @@ void CleaningHistory::updateAccumulators(float x, float y, float theta) {
     visitedCells.insert(cellKey);
 }
 
-void CleaningHistory::writeSnapshot(float x, float y, float theta, float time) {
+void CleaningHistory::writeSnapshot(float x, float y, float theta, float time, int brushRPM) {
     // Localization resets to origin right before session ends — drop if the
     // robot was far from origin (genuine return-to-base passes through gradually)
     if (hasPrevPose && fabsf(x) < 0.001f && fabsf(y) < 0.001f && fabsf(theta) < 0.1f) {
@@ -878,8 +894,13 @@ void CleaningHistory::writeSnapshot(float x, float y, float theta, float time) {
         }
     }
 
+    // `b` is omitted when the motor read failed, so a consumer can tell "brush
+    // stopped" from "brush unknown" and keep old sessions readable.
     String line = "{\"x\":" + String(x, 3) + ",\"y\":" + String(y, 3) + ",\"t\":" + String(theta, 1) +
-                  ",\"ts\":" + String(time, 1) + "}";
+                  ",\"ts\":" + String(time, 1);
+    if (brushRPM >= 0)
+        line += ",\"b\":" + String(brushRPM);
+    line += "}";
 
     updateAccumulators(x, y, theta);
     bufferLine(line);
@@ -1016,9 +1037,22 @@ void CleaningHistory::readFirstLastLines(const String& path, bool compressed, St
 }
 
 std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
+    return listFiles(HISTORY_DIR, true);
+}
+
+std::vector<HistorySessionInfo> CleaningHistory::listSavedMaps() {
+    return listFiles(MAPS_DIR, false);
+}
+
+bool CleaningHistory::validMapFilename(const String& filename) {
+    return (filename.endsWith(".jsonl") || filename.endsWith(".jsonl.hs")) && filename.indexOf('/') < 0 &&
+           filename.indexOf("..") < 0 && filename.length() <= 64;
+}
+
+std::vector<HistorySessionInfo> CleaningHistory::listFiles(const String& dir, bool includeActive) {
     std::vector<HistorySessionInfo> result;
 
-    File root = SPIFFS.open(HISTORY_DIR);
+    File root = SPIFFS.open(dir);
     if (!root || !root.isDirectory())
         return result;
 
@@ -1041,7 +1075,7 @@ std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
             // Skip the actively collecting file during disk enumeration.
             // We will manually append it at the end to avoid thread-safety /
             // concurrent modification issues with filesystem iterators.
-            if (collecting && fullPath == activeFilePath) {
+            if (includeActive && collecting && fullPath == activeFilePath) {
                 entry = root.openNextFile();
                 continue;
             }
@@ -1075,7 +1109,7 @@ std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
     }
 
     // Always append the active session from memory to ensure exactly one entry
-    if (collecting && !activeFilePath.isEmpty()) {
+    if (includeActive && collecting && !activeFilePath.isEmpty()) {
         String name = activeFilePath;
         int lastSlash = name.lastIndexOf('/');
         if (lastSlash >= 0)
@@ -1103,7 +1137,18 @@ std::vector<HistorySessionInfo> CleaningHistory::listSessions() {
 }
 
 std::shared_ptr<LogReader> CleaningHistory::readSession(const String& filename) {
-    String path = String(HISTORY_DIR) + "/" + filename;
+    return readFile(HISTORY_DIR, filename);
+}
+
+std::shared_ptr<LogReader> CleaningHistory::readSavedMap(const String& filename) {
+    return readFile(MAPS_DIR, filename);
+}
+
+std::shared_ptr<LogReader> CleaningHistory::readFile(const String& dir, const String& filename) {
+    if (!validMapFilename(filename))
+        return nullptr;
+
+    String path = dir + "/" + filename;
 
     // Refuse to serve files involved in compression (partial .hs is corrupt)
     if (compressing && (path == compressSrcPath || path == compressDstPath))
@@ -1119,15 +1164,86 @@ std::shared_ptr<LogReader> CleaningHistory::readSession(const String& filename) 
     if (filename.endsWith(".hs")) {
         return std::make_shared<CompressedLogReader>(std::move(f));
     }
+
+    if (collecting && path == activeFilePath && !writeBuffer.empty()) {
+        String tail;
+        size_t total = 0;
+        for (const auto& line: writeBuffer) {
+            total += line.length() + 1;
+        }
+        tail.reserve(total);
+        for (const auto& line: writeBuffer) {
+            tail += line;
+            tail += '\n';
+        }
+        return std::make_shared<BufferedLogReader>(std::move(f), tail);
+    }
+
     return std::make_shared<PlainLogReader>(std::move(f));
 }
 
 bool CleaningHistory::deleteSession(const String& filename) {
-    String path = String(HISTORY_DIR) + "/" + filename;
+    return deleteFile(HISTORY_DIR, filename);
+}
+
+bool CleaningHistory::deleteSavedMap(const String& filename) {
+    return deleteFile(MAPS_DIR, filename);
+}
+
+bool CleaningHistory::deleteFile(const String& dir, const String& filename) {
+    if (!validMapFilename(filename))
+        return false;
+
+    String path = dir + "/" + filename;
     if (!SPIFFS.exists(path))
         return false;
     metaCache.erase(filename);
     return SPIFFS.remove(path);
+}
+
+bool CleaningHistory::saveMapFromSession(const String& filename) {
+    if (!validMapFilename(filename))
+        return false;
+
+    String srcPath = String(HISTORY_DIR) + "/" + filename;
+    String dstPath = String(MAPS_DIR) + "/" + filename;
+
+    if (compressing && (srcPath == compressSrcPath || srcPath == compressDstPath))
+        return false;
+    if (!SPIFFS.exists(srcPath) || SPIFFS.exists(dstPath))
+        return false;
+
+    File src = SPIFFS.open(srcPath, FILE_READ);
+    if (!src)
+        return false;
+
+    File dst = SPIFFS.open(dstPath, FILE_WRITE);
+    if (!dst) {
+        src.close();
+        return false;
+    }
+
+    uint8_t buf[512];
+    bool ok = true;
+    while (src.available()) {
+        size_t n = src.read(buf, sizeof(buf));
+        if (n == 0)
+            break;
+        if (dst.write(buf, n) != n) {
+            ok = false;
+            break;
+        }
+    }
+    src.close();
+    dst.close();
+
+    if (!ok) {
+        SPIFFS.remove(dstPath);
+        return false;
+    }
+
+    dataLogger.logGenericEvent("map_save", {{"path", dstPath, FIELD_STRING}});
+    return true;
 }
 
 void CleaningHistory::deleteAllSessions() {

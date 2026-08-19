@@ -6,6 +6,8 @@ import { ErrorBannerStack, useErrorStack } from "../components/error-banner";
 import { Icon } from "../components/icon";
 import { useNavigate, usePath } from "../components/router";
 import { usePoll } from "../hooks/use-poll";
+import { T, useI18n } from "../i18n";
+import type { DistanceUnit } from "../distance-units";
 import type { HistoryFileInfo, MapData } from "../types";
 import { normalizeError } from "../utils";
 import { HistoryItemView } from "./history/item";
@@ -14,7 +16,12 @@ import { HistoryListView } from "./history/list";
 const RECOVERY_GUIDE_URL =
     "https://github.com/renjfk/OpenNeato/blob/main/docs/user-guide.md#recovering-corrupted-cleaning-history";
 
-export function HistoryView() {
+interface HistoryViewProps {
+    distanceUnit: DistanceUnit;
+}
+
+export function HistoryView({ distanceUnit }: HistoryViewProps) {
+    const { t } = useI18n();
     const navigate = useNavigate();
     const path = usePath();
     const [errors, errorStack] = useErrorStack();
@@ -58,7 +65,7 @@ export function HistoryView() {
             .finally(() => setLoading(false));
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-    // Poll list + active recording session map (every 5s while recording)
+    // Poll list + active recording session map once per second while recording.
     usePoll(
         async () => {
             const fileList = await api.getHistoryList();
@@ -72,7 +79,7 @@ export function HistoryView() {
                 }
             }
         },
-        5000,
+        1000,
         hasRecording,
     );
 
@@ -158,30 +165,50 @@ export function HistoryView() {
             });
     }, [errorStack]);
 
+    const handleSaveMap = useCallback(
+        (idx: number) => {
+            const file = files[idx];
+            if (!file) return;
+            api.saveMap(file.name)
+                .then(() => navigate("/maps"))
+                .catch((e: unknown) => errorStack.push(normalizeError(e, "Failed to save map")));
+        },
+        [files, navigate, errorStack],
+    );
+
     const showDetail = selectedName !== null && selectedFile !== null;
 
     return (
         <>
             <div class="header">
-                <button type="button" class="header-back-btn" onClick={handleBack} aria-label="Back">
+                <button type="button" class="header-back-btn" onClick={handleBack} aria-label={t("Back")}>
                     <Icon svg={backSvg} />
                 </button>
-                <h1>{showDetail ? "Clean Map" : "Cleaning History"}</h1>
+                <h1>{t(showDetail ? "Clean Map" : "Cleaning History")}</h1>
                 <div class="header-right-spacer" />
             </div>
 
             <ErrorBannerStack errors={errors} />
 
             <div class="history-page">
-                {loading && <div class="history-empty">Loading...</div>}
+                {loading && (
+                    <div class="history-empty">
+                        <T>Loading...</T>
+                    </div>
+                )}
 
                 {!loading && listCorrupted && !showDetail && (
                     <div class="history-recovery">
-                        <h2 class="history-recovery-title">Cleaning history is corrupted</h2>
+                        <h2 class="history-recovery-title">
+                            <T>Cleaning history is corrupted</T>
+                        </h2>
                         <p class="history-recovery-msg">
-                            One of the stored sessions contains malformed data and is preventing the list from loading.
-                            The recovery guide explains how to identify and remove the bad session(s) without losing the
-                            rest. If you'd rather not investigate, you can wipe everything in one go.
+                            <T>
+                                One of the stored sessions contains malformed data and is preventing the list from
+                                loading. The recovery guide explains how to identify and remove the bad session(s)
+                                without losing the rest. If you'd rather not investigate, you can wipe everything in one
+                                go.
+                            </T>
                         </p>
                         <div class="history-recovery-actions">
                             <a
@@ -190,7 +217,7 @@ export function HistoryView() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                             >
-                                Open recovery guide
+                                <T>Open recovery guide</T>
                             </a>
                             <button
                                 type="button"
@@ -198,7 +225,7 @@ export function HistoryView() {
                                 onClick={() => setConfirmReset(true)}
                                 disabled={deleting}
                             >
-                                Delete all history
+                                <T>Delete all history</T>
                             </button>
                         </div>
                     </div>
@@ -214,6 +241,8 @@ export function HistoryView() {
                         onDeleteAll={handleDeleteAll}
                         onImported={handleImported}
                         onError={errorStack.push}
+                        distanceUnit={distanceUnit}
+                        onSaveMap={handleSaveMap}
                     />
                 )}
 
@@ -227,6 +256,8 @@ export function HistoryView() {
                         onDeleteAll={handleDeleteAll}
                         onImported={handleImported}
                         onError={errorStack.push}
+                        distanceUnit={distanceUnit}
+                        onSaveMap={handleSaveMap}
                     />
                 )}
 
@@ -236,13 +267,14 @@ export function HistoryView() {
                         map={selectedMap}
                         mapEmpty={mapEmpty}
                         recording={selectedRecording}
+                        distanceUnit={distanceUnit}
                     />
                 )}
 
                 {confirmReset && (
                     <ConfirmDialog
-                        message="Delete all map data?"
-                        confirmLabel="Delete"
+                        message={t("Delete all map data?")}
+                        confirmLabel={t("Delete")}
                         disabled={deleting}
                         onConfirm={() => {
                             setConfirmReset(false);

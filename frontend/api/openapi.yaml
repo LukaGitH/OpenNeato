@@ -394,6 +394,32 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/schedule/next:
+    get:
+      tags:
+        - Actions
+      summary: Get the next scheduled cleaning slot and skip state
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScheduleNextData"
+    post:
+      tags:
+        - Actions
+      summary: Skip the next enabled scheduled cleaning slot
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+    delete:
+      tags:
+        - Actions
+      summary: Cancel the pending skip for the next scheduled cleaning slot
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
   /api/manual/status:
     get:
       tags:
@@ -873,6 +899,82 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/maps:
+    get:
+      tags:
+        - History
+      summary: List saved map snapshots with embedded session and summary metadata
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/HistoryFileInfo"
+    post:
+      tags:
+        - History
+      summary: Save a map snapshot from an existing history session
+      parameters:
+        - name: source
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "400":
+          description: save failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/maps/{filename}:
+    get:
+      tags:
+        - History
+      summary: Download a saved map file (transparently decompressed)
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: application/x-ndjson
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        "404":
+          description: map not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags:
+        - History
+      summary: Delete a saved map file
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          $ref: "#/components/responses/Ok"
+        "404":
+          description: map not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 components:
   schemas:
     Ok:
@@ -882,6 +984,52 @@ components:
           type: boolean
       required:
         - ok
+    ScheduleNextData:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          description: Whether the weekly cleaning schedule is enabled
+        skipNextClean:
+          type: boolean
+          description: Whether the next enabled scheduled cleaning slot will be skipped
+        next:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ScheduleTime"
+      required:
+        - enabled
+        - skipNextClean
+        - next
+    ScheduleTime:
+      type: object
+      properties:
+        day:
+          type: string
+          enum:
+            - Mon
+            - Tue
+            - Wed
+            - Thu
+            - Fri
+            - Sat
+            - Sun
+        dayOffset:
+          type: integer
+          description: Days from the current local day (0 = today)
+        hour:
+          type: integer
+          minimum: 0
+          maximum: 23
+        minute:
+          type: integer
+          minimum: 0
+          maximum: 59
+      required:
+        - day
+        - dayOffset
+        - hour
+        - minute
     Error:
       type: object
       properties:
@@ -1430,6 +1578,12 @@ components:
         sideBrushPower:
           type: number
           description: Side brush power in mW (500-1500)
+        manualSpeed:
+          type: number
+          description: Max manual drive speed in mm/s (60-120)
+        manualTurn:
+          type: number
+          description: Manual turn authority percent (40-100)
         ntfyTopic:
           type: string
           description: ntfy.sh topic for push notifications (empty = disabled)
@@ -1460,6 +1614,18 @@ components:
         scheduleEnabled:
           type: boolean
           description: Master switch for the weekly cleaning schedule
+        autoRestartEnabled:
+          type: boolean
+          description: Restart the robot once per day at the configured local time when idle
+        autoRestartHour:
+          type: number
+          description: Hour for the daily maintenance restart in local time (0-23)
+        autoRestartMinute:
+          type: number
+          description: Minute for the daily maintenance restart in local time (0-59)
+        restartBeforeClean:
+          type: boolean
+          description: Restart the robot before each scheduled clean to ensure responsiveness
         sched0Hour:
           type: number
         sched0Min:
@@ -1560,6 +1726,8 @@ components:
         - brushRpm
         - vacuumSpeed
         - sideBrushPower
+        - manualSpeed
+        - manualTurn
         - ntfyTopic
         - ntfyServer
         - ntfyToken
@@ -1570,6 +1738,10 @@ components:
         - ntfyOnAlert
         - ntfyOnDocking
         - scheduleEnabled
+        - autoRestartEnabled
+        - autoRestartHour
+        - autoRestartMinute
+        - restartBeforeClean
         - sched0Hour
         - sched0Min
         - sched0On

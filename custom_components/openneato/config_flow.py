@@ -10,8 +10,12 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .api import OpenNeatoApiClient, OpenNeatoApiError, OpenNeatoConnectionError
-from .const import CONF_HOST, DOMAIN
+from .api import OpenNeatoApiClient, OpenNeatoConnectionError
+from .const import (
+    DOMAIN,
+
+    CONF_HOST,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,7 +47,7 @@ class OpenNeatoConfigFlow(ConfigFlow, domain=DOMAIN):
                 robot_info = await api.get_robot_version()
             except OpenNeatoConnectionError:
                 errors["base"] = "cannot_connect"
-            except (OpenNeatoApiError, Exception):
+            except Exception:  # noqa: BLE001 -- surface anything as "unknown"
                 _LOGGER.exception("Unexpected exception during config flow")
                 errors["base"] = "unknown"
             else:

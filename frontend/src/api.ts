@@ -10,6 +10,7 @@ import type {
     LogFileInfo,
     ManualStatus,
     MapData,
+    ScheduleNextData,
     SettingsData,
     StateData,
     SystemData,
@@ -83,6 +84,14 @@ async function fetchSessionData(filename: string): Promise<MapData[]> {
     return parseMapData(raw);
 }
 
+async function fetchSavedMapData(filename: string): Promise<MapData[]> {
+    const res = await fetch(`/api/maps/${filename}`);
+    if (!res.ok) throw new Error(await parseError(res));
+    const raw = await res.text();
+    if (!raw.trim()) return [];
+    return parseMapData(raw);
+}
+
 function uploadFile(url: string, file: File, onProgress: (pct: number) => void): Promise<void> {
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
@@ -132,6 +141,9 @@ export const api = {
     cleanPause: () => post("/api/clean?action=pause"),
     cleanStop: () => post("/api/clean?action=stop"),
     cleanDock: () => post("/api/clean?action=dock"),
+    getNextSchedule: () => get<ScheduleNextData>("/api/schedule/next"),
+    skipNextClean: () => post("/api/schedule/next"),
+    cancelSkipNextClean: () => del("/api/schedule/next"),
     manual: (enable: boolean) => post(`/api/manual?enable=${enable ? 1 : 0}`),
     manualMove: (left: number, right: number, speed: number) =>
         post(`/api/manual/move?left=${left}&right=${right}&speed=${speed}`),
@@ -160,6 +172,10 @@ export const api = {
     deleteHistorySession: (name: string) => del(`/api/history/${name}`),
     deleteAllHistory: () => del("/api/history"),
     importSession: (file: File, onProgress: (pct: number) => void) => importSession(file, onProgress),
+    getSavedMaps: () => get<HistoryFileInfo[]>("/api/maps"),
+    getSavedMap: (filename: string) => fetchSavedMapData(filename),
+    saveMap: (source: string) => post(`/api/maps?source=${encodeURIComponent(source)}`),
+    deleteSavedMap: (name: string) => del(`/api/maps/${name}`),
     uploadFirmware: (file: File, md5: string, onProgress: (pct: number) => void) =>
         uploadFirmware(file, md5, onProgress),
     saveSchedule: (patch: Partial<SettingsData>) => put<SettingsData>("/api/settings", patch),

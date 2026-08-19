@@ -3,7 +3,7 @@ import { api } from "../../api";
 import type { ErrorStackHandle } from "../../components/error-banner";
 import { useFetch } from "../../hooks/use-fetch";
 import type { SettingsData } from "../../types";
-import { normalizeError } from "../../utils";
+import { fmtTime, normalizeError, parseTime } from "../../utils";
 import { DEFAULT_SERVER } from "./constants";
 
 export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: () => void) {
@@ -19,7 +19,9 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
     const [maxGpioPin, setMaxGpioPin] = useState(21);
     const [hostname, setHostname] = useState("neato");
     const [navMode, setNavMode] = useState("Normal");
-    const [stallThreshold, setStallThreshold] = useState(60);
+    const [stallThreshold, setStallThreshold] = useState(80);
+    const [manualSpeed, setManualSpeed] = useState(120);
+    const [manualTurn, setManualTurn] = useState(80);
     const [brushRpm, setBrushRpm] = useState(1200);
     const [vacuumSpeed, setVacuumSpeed] = useState(80);
     const [sideBrushPower, setSideBrushPower] = useState(1500);
@@ -32,8 +34,11 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
     const [ntfyOnError, setNtfyOnError] = useState(true);
     const [ntfyOnAlert, setNtfyOnAlert] = useState(true);
     const [ntfyOnDocking, setNtfyOnDocking] = useState(true);
+    const [autoRestartEnabled, setAutoRestartEnabled] = useState(false);
+    const [autoRestartTime, setAutoRestartTime] = useState("03:00");
+    const [restartBeforeClean, setRestartBeforeClean] = useState(false);
 
-    // Server-confirmed state — used to compute dirty/needsReboot
+    // Server-confirmed state - used to compute dirty/needsReboot
     const server = useRef<SettingsData>({ ...DEFAULT_SERVER });
     const [settingsLoaded, setSettingsLoaded] = useState(false);
 
@@ -59,6 +64,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
             setHostname(fetched.hostname);
             setNavMode(fetched.navMode ?? "Normal");
             setStallThreshold(fetched.stallThreshold);
+            setManualSpeed(fetched.manualSpeed ?? 120);
+            setManualTurn(fetched.manualTurn ?? 80);
             setBrushRpm(fetched.brushRpm);
             setVacuumSpeed(fetched.vacuumSpeed);
             setSideBrushPower(fetched.sideBrushPower);
@@ -71,9 +78,14 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
             setNtfyOnError(fetched.ntfyOnError ?? true);
             setNtfyOnAlert(fetched.ntfyOnAlert ?? true);
             setNtfyOnDocking(fetched.ntfyOnDocking ?? true);
+            setAutoRestartEnabled(fetched.autoRestartEnabled ?? false);
+            setAutoRestartTime(fmtTime(fetched.autoRestartHour ?? 3, fetched.autoRestartMinute ?? 0));
+            setRestartBeforeClean(fetched.restartBeforeClean ?? false);
             setSettingsLoaded(true);
         }
     }, [fetched]);
+
+    const parsedMaintenanceTime = parseTime(autoRestartTime);
 
     // --- Dirty / validation / reboot detection ---
 
@@ -90,6 +102,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
             hostname !== server.current.hostname ||
             navMode !== (server.current.navMode ?? "Normal") ||
             stallThreshold !== server.current.stallThreshold ||
+            manualSpeed !== (server.current.manualSpeed ?? 120) ||
+            manualTurn !== (server.current.manualTurn ?? 80) ||
             brushRpm !== server.current.brushRpm ||
             vacuumSpeed !== server.current.vacuumSpeed ||
             sideBrushPower !== server.current.sideBrushPower ||
@@ -101,7 +115,10 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
             ntfyOnDone !== (server.current.ntfyOnDone ?? true) ||
             ntfyOnError !== (server.current.ntfyOnError ?? true) ||
             ntfyOnAlert !== (server.current.ntfyOnAlert ?? true) ||
-            ntfyOnDocking !== (server.current.ntfyOnDocking ?? true));
+            ntfyOnDocking !== (server.current.ntfyOnDocking ?? true) ||
+            autoRestartEnabled !== (server.current.autoRestartEnabled ?? false) ||
+            autoRestartTime !== fmtTime(server.current.autoRestartHour ?? 3, server.current.autoRestartMinute ?? 0) ||
+            restartBeforeClean !== (server.current.restartBeforeClean ?? false));
 
     const needsReboot =
         uartTxPin !== server.current.uartTxPin ||
@@ -134,7 +151,9 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
               : null
         : null;
 
-    const validationError = pinError || hostnameError || syslogIpError;
+    const autoRestartTimeError = autoRestartEnabled ? (!parsedMaintenanceTime ? "Use HH:MM format" : null) : null;
+
+    const validationError = pinError || hostnameError || syslogIpError || autoRestartTimeError;
 
     // --- Unified save ---
 
@@ -152,6 +171,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         if (hostname !== server.current.hostname) patch.hostname = hostname;
         if (navMode !== (server.current.navMode ?? "Normal")) patch.navMode = navMode;
         if (stallThreshold !== server.current.stallThreshold) patch.stallThreshold = stallThreshold;
+        if (manualSpeed !== (server.current.manualSpeed ?? 120)) patch.manualSpeed = manualSpeed;
+        if (manualTurn !== (server.current.manualTurn ?? 80)) patch.manualTurn = manualTurn;
         if (brushRpm !== server.current.brushRpm) patch.brushRpm = brushRpm;
         if (vacuumSpeed !== server.current.vacuumSpeed) patch.vacuumSpeed = vacuumSpeed;
         if (sideBrushPower !== server.current.sideBrushPower) patch.sideBrushPower = sideBrushPower;
@@ -164,6 +185,20 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         if (ntfyOnError !== (server.current.ntfyOnError ?? true)) patch.ntfyOnError = ntfyOnError;
         if (ntfyOnAlert !== (server.current.ntfyOnAlert ?? true)) patch.ntfyOnAlert = ntfyOnAlert;
         if (ntfyOnDocking !== (server.current.ntfyOnDocking ?? true)) patch.ntfyOnDocking = ntfyOnDocking;
+        if (autoRestartEnabled !== (server.current.autoRestartEnabled ?? false)) {
+            patch.autoRestartEnabled = autoRestartEnabled;
+        }
+        if (parsedMaintenanceTime) {
+            if (parsedMaintenanceTime.hour !== (server.current.autoRestartHour ?? 3)) {
+                patch.autoRestartHour = parsedMaintenanceTime.hour;
+            }
+            if (parsedMaintenanceTime.minute !== (server.current.autoRestartMinute ?? 0)) {
+                patch.autoRestartMinute = parsedMaintenanceTime.minute;
+            }
+        }
+        if (restartBeforeClean !== (server.current.restartBeforeClean ?? false)) {
+            patch.restartBeforeClean = restartBeforeClean;
+        }
         return patch;
     }, [
         tz,
@@ -177,6 +212,8 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         hostname,
         navMode,
         stallThreshold,
+        manualSpeed,
+        manualTurn,
         brushRpm,
         vacuumSpeed,
         sideBrushPower,
@@ -189,6 +226,9 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         ntfyOnError,
         ntfyOnAlert,
         ntfyOnDocking,
+        autoRestartEnabled,
+        parsedMaintenanceTime,
+        restartBeforeClean,
     ]);
 
     const handleSave = useCallback(() => {
@@ -249,6 +289,10 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         setNavMode,
         stallThreshold,
         setStallThreshold,
+        manualSpeed,
+        setManualSpeed,
+        manualTurn,
+        setManualTurn,
         brushRpm,
         setBrushRpm,
         vacuumSpeed,
@@ -273,12 +317,19 @@ export function useSettingsForm(errorStack: ErrorStackHandle, startRebootFlow: (
         setNtfyOnAlert,
         ntfyOnDocking,
         setNtfyOnDocking,
+        autoRestartEnabled,
+        setAutoRestartEnabled,
+        autoRestartTime,
+        setAutoRestartTime,
+        restartBeforeClean,
+        setRestartBeforeClean,
         // Derived state
         isDirty,
         needsReboot,
         pinError,
         hostnameError,
         syslogIpError,
+        autoRestartTimeError,
         validationError,
         // Save flow
         saving,

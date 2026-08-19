@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from asyncio import Task, ensure_future
 from typing import Any
 
 import aiohttp
@@ -50,6 +51,17 @@ class OpenNeatoApiClient:
         self._host = host.rstrip("/")
         self._session = session
         self._base_url = f"http://{self._host}"
+        # Coalesces concurrent get_history_session() calls for the same
+        # filename into a single in-flight request. Both camera entities
+        # (LIDAR map + Cleaning replay) independently fetch the same
+        # completed session right after the first coordinator refresh, and
+        # the ESP32 bridge — which reads history off a blocking serial link
+        # to the robot — can stall indefinitely when hit with two
+        # overlapping requests for the same file rather than erroring.
+        # Entries are removed once the fetch completes, so this only
+        # de-duplicates true concurrency, not stale caching (important for
+        # in-progress "recording" sessions whose data keeps growing).
+        self._history_inflight: dict[str, Task] = {}
 
     @property
     def base_url(self) -> str:
@@ -124,6 +136,42 @@ class OpenNeatoApiClient:
                 f"Timeout connecting to OpenNeato at {self._host}"
             ) from err
 
+    async def delete_history_session(self, filename: str) -> None:
+        """Delete one recorded cleaning session from the bridge.
+
+        The firmware exposes DELETE /api/history/<name>. `filename` comes
+        from the /api/history listing and is concatenated into the URL, so
+        it is validated against the same strict pattern the download path
+        uses — a rogue or MITM'd peer could otherwise aim the delete at an
+        unrelated endpoint.
+        """
+        if not _SESSION_NAME_RE.match(filename):
+            raise OpenNeatoApiError(f"Refusing to delete unsafe filename: {filename!r}")
+
+        url = f"{self._base_url}/api/history/{filename}"
+        _LOGGER.debug("DELETE %s", url)
+        try:
+            async with timeout(TIMEOUT):
+                async with self._session.delete(url) as response:
+                    _LOGGER.debug("DELETE %s -> %s", url, response.status)
+                    response.raise_for_status()
+        except aiohttp.ClientConnectionError as err:
+            _LOGGER.warning("Connection error deleting %s: %s", filename, err)
+            raise OpenNeatoConnectionError(
+                f"Unable to connect to OpenNeato at {self._host}: {err}"
+            ) from err
+        except aiohttp.ClientResponseError as err:
+            _LOGGER.warning("HTTP %s deleting %s: %s", err.status, filename, err.message)
+            raise OpenNeatoApiError(
+                f"API error deleting /api/history/{filename}: "
+                f"{err.status} {err.message}"
+            ) from err
+        except TimeoutError as err:
+            _LOGGER.warning("Timeout deleting %s (limit %ss)", filename, TIMEOUT)
+            raise OpenNeatoConnectionError(
+                f"Timeout connecting to OpenNeato at {self._host}"
+            ) from err
+
     async def _put(self, path: str, json_data: dict[str, Any]) -> dict[str, Any]:
         """Perform a PUT request with a JSON body."""
         url = f"{self._base_url}{path}"
@@ -153,11 +201,47 @@ class OpenNeatoApiClient:
                 f"Timeout connecting to OpenNeato at {self._host}"
             ) from err
 
+    async def _delete(self, path: str) -> dict[str, Any] | str:
+        """Perform a DELETE request."""
+        url = f"{self._base_url}{path}"
+        _LOGGER.debug("DELETE %s", url)
+        try:
+            async with timeout(TIMEOUT):
+                async with self._session.delete(url) as response:
+                    _LOGGER.debug(
+                        "DELETE %s -> %s (%s)",
+                        path, response.status, response.content_type,
+                    )
+                    response.raise_for_status()
+                    content_type = response.content_type or ""
+                    if "json" in content_type:
+                        return await _read_json(response)
+                    return await response.text()
+        except aiohttp.ClientConnectionError as err:
+            _LOGGER.warning("Connection error on DELETE %s: %s", path, err)
+            raise OpenNeatoConnectionError(
+                f"Unable to connect to OpenNeato at {self._host}: {err}"
+            ) from err
+        except aiohttp.ClientResponseError as err:
+            _LOGGER.warning("HTTP %s on DELETE %s: %s", err.status, path, err.message)
+            raise OpenNeatoApiError(
+                f"API error from DELETE {path}: {err.status} {err.message}"
+            ) from err
+        except TimeoutError as err:
+            _LOGGER.warning("Timeout on DELETE %s (limit %ss)", path, TIMEOUT)
+            raise OpenNeatoConnectionError(
+                f"Timeout connecting to OpenNeato at {self._host}"
+            ) from err
+
     # ── GET endpoints ────────────────────────────────────────────────
 
     async def get_state(self) -> dict[str, Any]:
         """Get the robot's current state."""
         return await self._get("/api/state")
+
+    async def get_schedule_next(self) -> dict[str, Any]:
+        """Get the next scheduled cleaning slot and skip state."""
+        return await self._get("/api/schedule/next")
 
     async def get_charger(self) -> dict[str, Any]:
         """Get charger / battery information."""
@@ -214,6 +298,29 @@ class OpenNeatoApiClient:
     async def get_history_session(self, filename: str) -> str:
         """Download the raw JSONL data for a specific cleaning session.
 
+        Coalesces concurrent requests for the same filename into a single
+        in-flight fetch (see `_history_inflight` in __init__) — both camera
+        entities can request the same session within milliseconds of each
+        other at startup, and the bridge can't reliably serve two
+        overlapping requests for the same file.
+        """
+        task = self._history_inflight.get(filename)
+        if task is not None:
+            _LOGGER.debug(
+                "History fetch for %s already in flight, awaiting it", filename
+            )
+            return await task
+
+        task = ensure_future(self._fetch_history_session(filename))
+        self._history_inflight[filename] = task
+        try:
+            return await task
+        finally:
+            self._history_inflight.pop(filename, None)
+
+    async def _fetch_history_session(self, filename: str) -> str:
+        """Perform the actual HTTP fetch for a session's raw JSONL data.
+
         `filename` originates from the ESP32's /api/history listing and
         is concatenated into the URL, so we validate it against a strict
         pattern first — a rogue or MITM'd peer could otherwise redirect
@@ -264,6 +371,9 @@ class OpenNeatoApiClient:
                 f"API error from /api/history/{filename}: {err.status} {err.message}"
             ) from err
         except TimeoutError as err:
+            _LOGGER.warning(
+                "Timeout on GET /api/history/%s (limit %ss)", filename, TIMEOUT
+            )
             raise OpenNeatoConnectionError(
                 f"Timeout connecting to OpenNeato at {self._host}"
             ) from err
@@ -271,7 +381,15 @@ class OpenNeatoApiClient:
     # ── POST endpoints ───────────────────────────────────────────────
 
     async def clean(self, action: str) -> dict[str, Any] | str:
-        """Send a clean command (start, stop, pause, resume, spot, dock)."""
+        """Send a clean command.
+
+        NeatoSerial::clean() recognises "dock", "pause", "stop" and "spot";
+        every other value falls through to EVT_START_HOUSE. There is no
+        "resume" action -- the robot's own state machine treats a house-clean
+        event while paused as a resume, which is why async_start() sends
+        "house" in both cases. Passing an unrecognised string here would
+        silently start a fresh house clean instead of erroring.
+        """
         return await self._post("/api/clean", params={"action": action})
 
     async def play_sound(self, sound_id: int) -> dict[str, Any] | str:
@@ -310,6 +428,14 @@ class OpenNeatoApiClient:
     async def format_fs(self) -> dict[str, Any] | str:
         """Format the filesystem."""
         return await self._post("/api/system/format-fs")
+
+    async def skip_next_clean(self) -> dict[str, Any] | str:
+        """Skip the next enabled scheduled cleaning slot."""
+        return await self._post("/api/schedule/next")
+
+    async def cancel_skip_next_clean(self) -> dict[str, Any] | str:
+        """Cancel the pending skip for the next scheduled cleaning slot."""
+        return await self._delete("/api/schedule/next")
 
     # ── PUT endpoints ────────────────────────────────────────────────
 
