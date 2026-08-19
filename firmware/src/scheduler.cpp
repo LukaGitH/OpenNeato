@@ -130,12 +130,26 @@ bool Scheduler::handleScheduledCleaning(const Settings& s, int day, int nowMins)
             return true;
         }
 
+        // Claim the slot before going async, not after.
+        //
+        // getState only answers immediately on a cache hit; the state cache
+        // lives 2s, so a miss enqueues a serial command behind whatever else
+        // is pending. During a run the LIDAR mapper keeps that queue busy,
+        // and tick() comes round every 30s inside a 5-minute window — so a
+        // reply that takes longer than a tick used to let the next tick find
+        // the guard still unset and issue a second Clean House.
+        //
+        // Claiming up front closes that. The failure path below hands the
+        // slot back so a transient serial error still retries.
+        firedSlots[si] = schedMins;
+
         bool restartFirst = s.restartBeforeClean;
         serial.getState([this, si, day, schedMins, slotStr, restartFirst](bool ok, const RobotState& state) {
             if (!ok) {
                 LOG("SCHED", "GetState failed, cannot check robot state for slot %s", slotStr.c_str());
                 dataLogger.logGenericEvent("scheduler_state_error",
                                            {{"day", String(day), FIELD_INT}, {"slot", slotStr, FIELD_STRING}});
+                firedSlots[si] = -1;
                 return;
             }
 
@@ -145,7 +159,6 @@ bool Scheduler::handleScheduledCleaning(const Settings& s, int day, int nowMins)
                                                                  {"slot", slotStr, FIELD_STRING},
                                                                  {"reason", "busy", FIELD_STRING},
                                                                  {"state", state.uiState, FIELD_STRING}});
-                firedSlots[si] = schedMins;
                 return;
             }
 
@@ -169,8 +182,6 @@ bool Scheduler::handleScheduledCleaning(const Settings& s, int day, int nowMins)
             } else {
                 triggerClean(day, si);
             }
-
-            firedSlots[si] = schedMins;
         });
         return true;
     }

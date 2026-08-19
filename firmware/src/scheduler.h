@@ -37,7 +37,8 @@ private:
     DataLogger& dataLogger;
     Preferences& prefs;
 
-    // Duplicate trigger guard for cleaning slots per day.
+    // Duplicate trigger guard, indexed by slot and reset when the day rolls
+    // over. Value is the slot's minutes-since-midnight, or -1 for unclaimed.
     int firedDay = -1;
     int firedSlots[SCHEDULE_SLOTS_PER_DAY] = {-1, -1}; // Minutes-since-midnight per slot index
     int firedAutoRestart = -1;

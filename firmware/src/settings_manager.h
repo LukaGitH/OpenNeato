@@ -57,7 +57,10 @@ struct Settings : public JsonSerializable {
 
     // Schedule (ESP32-managed, not robot serial)
     bool scheduleEnabled = false;
-    SchedDay sched[SCHEDULE_DAYS]; // Mon=0 .. Sun=6
+    // Mon=0 .. Sun=6 — NOT the C library's Sun=0, which is what
+    // Scheduler::toSchedDay() converts from. Anything that indexes this with a
+    // tm_wday straight out of localtime_r() cleans on the wrong day.
+    SchedDay sched[SCHEDULE_DAYS];
 
     // Daily maintenance automation
     bool autoRestartEnabled = false;
