@@ -57,7 +57,13 @@ struct Settings : public JsonSerializable {
 
     // Schedule (ESP32-managed, not robot serial)
     bool scheduleEnabled = false;
-    SchedDay sched[SCHEDULE_DAYS]; // Sun=0 .. Sat=6
+    SchedDay sched[SCHEDULE_DAYS]; // Mon=0 .. Sun=6
+
+    // Daily maintenance automation
+    bool autoRestartEnabled = false;
+    int autoRestartHour = 3;
+    int autoRestartMinute = 0;
+    bool restartBeforeClean = false;
 
     std::vector<Field> toFields() const override;
     bool fromFields(const std::vector<Field>& fields) override;
