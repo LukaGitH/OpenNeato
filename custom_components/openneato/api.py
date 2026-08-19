@@ -153,11 +153,47 @@ class OpenNeatoApiClient:
                 f"Timeout connecting to OpenNeato at {self._host}"
             ) from err
 
+    async def _delete(self, path: str) -> dict[str, Any] | str:
+        """Perform a DELETE request."""
+        url = f"{self._base_url}{path}"
+        _LOGGER.debug("DELETE %s", url)
+        try:
+            async with timeout(TIMEOUT):
+                async with self._session.delete(url) as response:
+                    _LOGGER.debug(
+                        "DELETE %s -> %s (%s)",
+                        path, response.status, response.content_type,
+                    )
+                    response.raise_for_status()
+                    content_type = response.content_type or ""
+                    if "json" in content_type:
+                        return await _read_json(response)
+                    return await response.text()
+        except aiohttp.ClientConnectionError as err:
+            _LOGGER.warning("Connection error on DELETE %s: %s", path, err)
+            raise OpenNeatoConnectionError(
+                f"Unable to connect to OpenNeato at {self._host}: {err}"
+            ) from err
+        except aiohttp.ClientResponseError as err:
+            _LOGGER.warning("HTTP %s on DELETE %s: %s", err.status, path, err.message)
+            raise OpenNeatoApiError(
+                f"API error from DELETE {path}: {err.status} {err.message}"
+            ) from err
+        except TimeoutError as err:
+            _LOGGER.warning("Timeout on DELETE %s (limit %ss)", path, TIMEOUT)
+            raise OpenNeatoConnectionError(
+                f"Timeout connecting to OpenNeato at {self._host}"
+            ) from err
+
     # ── GET endpoints ────────────────────────────────────────────────
 
     async def get_state(self) -> dict[str, Any]:
         """Get the robot's current state."""
         return await self._get("/api/state")
+
+    async def get_schedule_next(self) -> dict[str, Any]:
+        """Get the next scheduled cleaning slot and skip state."""
+        return await self._get("/api/schedule/next")
 
     async def get_charger(self) -> dict[str, Any]:
         """Get charger / battery information."""
@@ -310,6 +346,14 @@ class OpenNeatoApiClient:
     async def format_fs(self) -> dict[str, Any] | str:
         """Format the filesystem."""
         return await self._post("/api/system/format-fs")
+
+    async def skip_next_clean(self) -> dict[str, Any] | str:
+        """Skip the next enabled scheduled cleaning slot."""
+        return await self._post("/api/schedule/next")
+
+    async def cancel_skip_next_clean(self) -> dict[str, Any] | str:
+        """Cancel the pending skip for the next scheduled cleaning slot."""
+        return await self._delete("/api/schedule/next")
 
     # ── PUT endpoints ────────────────────────────────────────────────
 

@@ -201,6 +201,16 @@ SWITCH_DESCRIPTIONS: tuple[OpenNeatoSwitchEntityDescription, ...] = (
         icon="mdi:console-network",
         entity_category=EntityCategory.CONFIG,
     ),
+    OpenNeatoSwitchEntityDescription(
+        key="auto_restart",
+        translation_key="auto_restart",
+        name="Daily auto restart",
+        section="settings",
+        field="autoRestartEnabled",
+        settings_field="autoRestartEnabled",
+        icon="mdi:restart-alert",
+        entity_category=EntityCategory.CONFIG,
+    ),
 )
 
 
@@ -269,6 +279,65 @@ class OpenNeatoSwitch(OpenNeatoEntity, SwitchEntity):
         await self.coordinator.async_request_refresh()
 
 
+class OpenNeatoSkipNextCleanSwitch(OpenNeatoEntity, SwitchEntity):
+    """Skip (or reinstate) the next scheduled cleaning slot."""
+
+    _attr_translation_key = "skip_next_clean"
+    _attr_name = "Skip next clean"
+    _attr_icon = "mdi:calendar-remove"
+
+    def __init__(
+        self,
+        coordinator: DataUpdateCoordinator,
+        serial: str,
+        api: OpenNeatoApiClient,
+        model: str | None = None,
+        sw_version: str | None = None,
+        fw_version: str | None = None,
+        host: str | None = None,
+    ) -> None:
+        """Initialize the switch."""
+        super().__init__(
+            coordinator,
+            serial,
+            model=model,
+            sw_version=sw_version,
+            fw_version=fw_version,
+            host=host,
+        )
+        self._attr_unique_id = f"{serial}_skip_next_clean"
+        self._api = api
+
+    @property
+    def available(self) -> bool:
+        """Only meaningful while the weekly schedule is enabled."""
+        if not super().available or self.coordinator.data is None:
+            return False
+        schedule_next = self.coordinator.data.get("schedule_next") or {}
+        return bool(schedule_next.get("enabled"))
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the next scheduled clean will be skipped."""
+        if self.coordinator.data is None:
+            return None
+        schedule_next = self.coordinator.data.get("schedule_next") or {}
+        value = schedule_next.get("skipNextClean")
+        if value is None:
+            return None
+        return bool(value)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Skip the next scheduled clean."""
+        await self._api.skip_next_clean()
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Cancel the pending skip."""
+        await self._api.cancel_skip_next_clean()
+        await self.coordinator.async_request_refresh()
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -284,7 +353,7 @@ async def async_setup_entry(
     api = data["api"]
     coordinator = data["coordinator"]
 
-    entities: list[OpenNeatoSwitch] = []
+    entities: list[SwitchEntity] = []
     for description in SWITCH_DESCRIPTIONS:
         entities.append(
             OpenNeatoSwitch(
@@ -298,5 +367,17 @@ async def async_setup_entry(
                 host=host,
             )
         )
+
+    entities.append(
+        OpenNeatoSkipNextCleanSwitch(
+            coordinator,
+            serial,
+            api,
+            model=model,
+            sw_version=sw_version,
+            fw_version=fw_version,
+            host=host,
+        )
+    )
 
     async_add_entities(entities)

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.12
+
+### Added
+- **`skip_next_clean` switch** — skip (or reinstate) the next enabled
+  scheduled cleaning slot via the firmware's new `/api/schedule/next`
+  endpoint (upstream #175). Only available while the schedule is enabled.
+- **`next_scheduled_clean` sensor** — shows the next scheduled slot as
+  `Day HH:MM` (upstream #141), `unknown` when the schedule is disabled.
+- **`auto_restart` switch** — config switch for the firmware's daily
+  maintenance restart (`autoRestartEnabled`, upstream #129/#130).
+
 ## 1.11
 
 ### Added

@@ -354,6 +354,20 @@ SENSOR_DESCRIPTIONS: tuple[OpenNeatoSensorEntityDescription, ...] = (
             else None
         ),
     ),
+    # ── Schedule (from /api/schedule/next) ────────────────────────────
+    OpenNeatoSensorEntityDescription(
+        key="next_scheduled_clean",
+        translation_key="next_scheduled_clean",
+        name="Next scheduled clean",
+        section="schedule_next",
+        field="",
+        icon="mdi:calendar-clock",
+        value_fn=lambda data: (
+            f"{slot['day']} {slot['hour']:02d}:{slot['minute']:02d}"
+            if data.get("enabled") and isinstance(slot := data.get("next"), dict)
+            else None
+        ),
+    ),
 )
 
 

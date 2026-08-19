@@ -41,6 +41,7 @@
       "last_clean_battery_used": { "name": "Last clean battery used" },
       "last_clean_mode": { "name": "Last clean mode" },
       "last_clean_ended": { "name": "Last clean ended" },
+      "next_scheduled_clean": { "name": "Next scheduled clean" },
       "analog_battery_voltage": { "name": "Battery voltage (analog)" },
       "analog_battery_current": { "name": "Battery current" },
       "analog_external_voltage": { "name": "External voltage (analog)" },
@@ -77,7 +78,9 @@
       "notify_on_alert": { "name": "Notify on alert" },
       "notify_on_docking": { "name": "Notify on docking" },
       "ap_fallback_on_disconnect": { "name": "WiFi AP fallback" },
-      "remote_syslog": { "name": "Remote syslog" }
+      "remote_syslog": { "name": "Remote syslog" },
+      "auto_restart": { "name": "Daily auto restart" },
+      "skip_next_clean": { "name": "Skip next clean" }
     },
     "button": {
       "restart": { "name": "Restart device" },
