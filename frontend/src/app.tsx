@@ -207,7 +207,7 @@ export function App() {
                     <HistoryView distanceUnit={distanceUnit} />
                 </Route>
                 <Route path="/maps" prefix>
-                    <SavedMapsView />
+                    <SavedMapsView distanceUnit={distanceUnit} />
                 </Route>
             </Router>
         </I18nProvider>

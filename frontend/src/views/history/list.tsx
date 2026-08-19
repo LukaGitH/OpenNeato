@@ -89,7 +89,7 @@ function SessionCard({
                     type="button"
                     class="history-session-download"
                     onClick={() => onSaveMap(index)}
-                    aria-label="Save map"
+                    aria-label={t("Save map")}
                 >
                     <Icon svg={databaseSvg} />
                 </button>

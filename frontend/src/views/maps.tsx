@@ -4,12 +4,19 @@ import backSvg from "../assets/icons/back.svg?raw";
 import { ErrorBannerStack, useErrorStack } from "../components/error-banner";
 import { Icon } from "../components/icon";
 import { useNavigate, usePath } from "../components/router";
+import type { DistanceUnit } from "../distance-units";
+import { T, useI18n } from "../i18n";
 import type { HistoryFileInfo, MapData } from "../types";
 import { normalizeError } from "../utils";
 import { HistoryItemView } from "./history/item";
 import { HistoryListView } from "./history/list";
 
-export function SavedMapsView() {
+interface SavedMapsViewProps {
+    distanceUnit: DistanceUnit;
+}
+
+export function SavedMapsView({ distanceUnit }: SavedMapsViewProps) {
+    const { t } = useI18n();
     const navigate = useNavigate();
     const path = usePath();
     const [errors, errorStack] = useErrorStack();
@@ -99,17 +106,21 @@ export function SavedMapsView() {
     return (
         <>
             <div class="header">
-                <button type="button" class="header-back-btn" onClick={handleBack} aria-label="Back">
+                <button type="button" class="header-back-btn" onClick={handleBack} aria-label={t("Back")}>
                     <Icon svg={backSvg} />
                 </button>
-                <h1>{showDetail ? "Saved Map" : "Saved Maps"}</h1>
+                <h1>{t(showDetail ? "Saved Map" : "Saved Maps")}</h1>
                 <div class="header-right-spacer" />
             </div>
 
             <ErrorBannerStack errors={errors} />
 
             <div class="history-page">
-                {loading && <div class="history-empty">Loading...</div>}
+                {loading && (
+                    <div class="history-empty">
+                        <T>Loading...</T>
+                    </div>
+                )}
                 {!loading && !showDetail && (
                     <HistoryListView
                         files={files}
@@ -122,10 +133,17 @@ export function SavedMapsView() {
                         onError={errorStack.push}
                         showListActions={false}
                         emptyLabel="No saved maps yet"
+                        distanceUnit={distanceUnit}
                     />
                 )}
                 {!loading && showDetail && (
-                    <HistoryItemView file={selectedFile} map={selectedMap} mapEmpty={mapEmpty} recording={false} />
+                    <HistoryItemView
+                        file={selectedFile}
+                        map={selectedMap}
+                        mapEmpty={mapEmpty}
+                        recording={false}
+                        distanceUnit={distanceUnit}
+                    />
                 )}
             </div>
         </>
