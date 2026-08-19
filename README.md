@@ -11,7 +11,8 @@
 **This is a [Leicas/OpenNeato](https://github.com/Leicas/OpenNeato) fork focused on the Home Assistant
 integration.** The HACS-installable integration under
 [`custom_components/openneato/`](custom_components/openneato/) is the reason this fork exists — it turns the
-upstream ESP32 bridge into a full HA device with vacuum / camera / sensor / switch / button entities, no YAML.
+upstream ESP32 bridge into a full HA device with vacuum / sensor / switch / button / time entities plus a
+canvas map card, no YAML.
 
 > [!IMPORTANT]
 > **If you want the standalone web UI**, use upstream [renjfk/OpenNeato](https://github.com/renjfk/OpenNeato)
@@ -167,7 +168,10 @@ sensor states) are tagged so they cluster cleanly under HA's Diagnostic section.
 Full per-version notes live in [`custom_components/openneato/CHANGELOG.md`](custom_components/openneato/CHANGELOG.md).
 Highlights:
 
-- **1.12** — the `openneato-replay-card` canvas card replaces the `LIDAR map` and `Cleaning replay`
+- **1.19** — `skip_next_clean` switch, `next_scheduled_clean` sensor, and `auto_restart` switch covering
+  the upstream skip-next-clean / next-schedule / daily-restart firmware features; delete button on the
+  replay card.
+- **1.18** — the `openneato-replay-card` canvas card replaces the `LIDAR map` and `Cleaning replay`
   cameras (`Platform.CAMERA` dropped); self-calibrating LIDAR floorplan with per-session alignment;
   HA-settable 7-day schedule (14 `time` entities + 14 slot switches); six bumper binary sensors, off by
   default; `chargerMAH` / `dischargeMAH` corrected from mAh to mA; the `errorCode` 200 sentinel no longer
