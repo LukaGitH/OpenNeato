@@ -4,6 +4,14 @@
 
 ### Added
 
+* **`skip_next_clean` switch** — skip (or reinstate) the next enabled
+scheduled cleaning slot via the firmware's new `/api/schedule/next` endpoint
+(upstream #175). Only available while the schedule is enabled.
+* **`next_scheduled_clean` sensor** — shows the next scheduled slot as
+`Day HH:MM` (upstream #141), `unknown` when the schedule is disabled.
+* **`auto_restart` switch** — config switch for the firmware's daily
+maintenance restart (`autoRestartEnabled`, upstream #129/#130).
+
 * **Delete button on the replay card.** A run that went wrong — the robot was
 lifted, the LIDAR was blocked, the map came out half-drawn — left a bad replay
 in the picker with no way to clear it. The bin icon next to the picker deletes
@@ -325,13 +333,6 @@ actually was, `except Exception`.
 ## 1.12
 
 ### Added
-- **`skip_next_clean` switch** — skip (or reinstate) the next enabled
-  scheduled cleaning slot via the firmware's new `/api/schedule/next`
-  endpoint (upstream #175). Only available while the schedule is enabled.
-- **`next_scheduled_clean` sensor** — shows the next scheduled slot as
-  `Day HH:MM` (upstream #141), `unknown` when the schedule is disabled.
-- **`auto_restart` switch** — config switch for the firmware's daily
-  maintenance restart (`autoRestartEnabled`, upstream #129/#130).
 - **Floorplan background for the map cameras** — the `LIDAR map` and
   `Cleaning replay` cameras can now render a user-supplied house floorplan
   (local PNG/JPG) as the background instead of the default dark grid.
