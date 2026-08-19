@@ -1174,8 +1174,7 @@ std::shared_ptr<LogReader> CleaningHistory::readFile(const String& dir, const St
         tail.reserve(total);
         for (const auto& line: writeBuffer) {
             tail += line;
-            tail += '
-';
+            tail += '\n';
         }
         return std::make_shared<BufferedLogReader>(std::move(f), tail);
     }
