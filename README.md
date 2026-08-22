@@ -23,6 +23,10 @@ canvas map card, no YAML.
 > `/api/history` hardening, ntfy server/token/on-start extensions). The firmware, frontend, and flash tool
 > otherwise track upstream closely.
 
+This fork automatically checks `Leicas/OpenNeato` once a day and merges clean
+upstream updates into `main`. A conflicting update stops safely in GitHub
+Actions and requires a manual resolution; no upstream commit is overwritten.
+
 The upstream project is an open-source replacement for Neato's discontinued cloud and mobile app: an ESP32
 bridge that talks to Botvac robots (D3-D7) over UART and exposes a local web UI over WiFi — no cloud, no app,
 no account required.
