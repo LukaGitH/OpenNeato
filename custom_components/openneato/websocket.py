@@ -75,15 +75,17 @@ def _floorplan_payload(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | N
 
     stored = hass.data.get(DOMAIN, {}).get(entry_id)
     mapper = stored.get("mapper") if isinstance(stored, dict) else None
-    if mapper is not None and mapper.sessions:
+    if mapper is not None and (mapper.sessions or mapper.live_revision):
         cal = mapper.calibration()
         if cal:
             offset = float(
                 entry.options.get(CONF_MAP_ROTATION_OFFSET, MAP_DEFAULT_ROTATION_OFFSET)
             )
             return {
-                # The session count busts the browser cache as the map improves.
-                "url": f"/api/openneato/map/{entry_id}?v={mapper.sessions}",
+                # The session count busts the browser cache after docking;
+                # the live revision does the same for the active two-second
+                # LIDAR preview.
+                "url": f"/api/openneato/map/{entry_id}?v={mapper.sessions}-{mapper.live_revision}",
                 "originX": cal["origin_x"],
                 "originY": cal["origin_y"],
                 "rotation": 0.0,

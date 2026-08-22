@@ -31,13 +31,17 @@ from .lidar_mapper import (
     build_session_grids,
     parse_pose,
     render_plan,
+    project_scan,
     scan_points,
+    stamp_floor,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
-POLL_INTERVAL = 4.0          # seconds between captures
+# Match the old live camera's cadence. Each capture remains guarded by
+# `_busy`, so a slow bridge never accumulates overlapping serial requests.
+POLL_INTERVAL = 2.0          # seconds between captures
 # A scan is only geometry if the laser was actually sweeping. Rather than pin a
 # nominal speed -- the robot reports 5.03 while docked and the field's unit is
 # not documented -- each run is judged against its own median: anything under
@@ -82,6 +86,8 @@ class LidarMapRunner:
         self._store = Store(hass, STORAGE_VERSION, f"{DOMAIN}_{entry_id}_lidar_map")
         self._map: AccumulatedMap | None = None
         self._captures: list[tuple[float, float, float, list[tuple[int, int]]]] = []
+        self._live_walls: dict[tuple[int, int], int] = {}
+        self._live_floor: set[tuple[int, int]] = set()
         self._collecting = False
         self._unsub_timer = None
         self._unsub_coordinator = None
@@ -125,6 +131,8 @@ class LidarMapRunner:
     def _start(self) -> None:
         self._collecting = True
         self._captures = []
+        self._live_walls = {}
+        self._live_floor = set()
         self._interval = POLL_INTERVAL
         self._last_health = time.monotonic()
         self._health_start = time.monotonic()
@@ -197,6 +205,9 @@ class LidarMapRunner:
                 self._captures.append(
                     (x, y, theta, points, float(payload.get("rotationSpeed") or 0.0))
                 )
+                for cell in project_scan(x, y, theta, points):
+                    self._live_walls[cell] = self._live_walls.get(cell, 0) + 1
+                self._live_floor.update(stamp_floor(x, y))
         except Exception as err:  # noqa: BLE001 -- one bad read must never end a run
             _LOGGER.debug("LIDAR mapping: sample failed (%s)", err)
         finally:
@@ -258,6 +269,8 @@ class LidarMapRunner:
         self._collecting = False
         self._stop_timer()
         captures, self._captures = self._captures, []
+        self._live_walls = {}
+        self._live_floor = set()
         if len(captures) < MIN_CAPTURES:
             _LOGGER.info(
                 "LIDAR mapping: only %d captures, too thin to merge", len(captures)
@@ -315,7 +328,15 @@ class LidarMapRunner:
     # ── output ──────────────────────────────────────────────────────
 
     async def async_render(self) -> tuple[bytes, dict[str, float]] | None:
-        """Render the accumulated map, or None if nothing is mapped yet."""
+        """Render the live run while cleaning, otherwise the saved map."""
+        if self._collecting and self._live_walls:
+            # The active run stays transient: it is rendered for the card but
+            # not persisted or merged until docking, when alignment can be
+            # evaluated safely against the saved plan.
+            return await self.hass.async_add_executor_job(
+                render_plan, dict(self._live_walls), set(self._live_floor)
+            )
+
         if not self._map or not self._map.walls:
             return None
         return await self.hass.async_add_executor_job(
@@ -324,9 +345,16 @@ class LidarMapRunner:
 
     def calibration(self) -> dict[str, float] | None:
         """Where the plan sits in the world, without rendering it."""
+        if self._collecting and self._live_walls:
+            return plan_calibration(self._live_walls, self._live_floor)
         if not self._map or not self._map.walls:
             return None
         return plan_calibration(self._map.walls, self._map.floor)
+
+    @property
+    def live_revision(self) -> int:
+        """A cache-busting token that changes with every active scan."""
+        return len(self._live_walls) if self._collecting else 0
 
     def alignment(self, session_name: str) -> tuple[int, int, int] | None:
         """How this session was corrected onto the map, if it was merged.
