@@ -771,7 +771,10 @@ class OpenNeatoReplayCard extends HTMLElement {
             this._seek(this._session.duration);
 
             if (this._config.autoplay) this._restart(true);
-            if (this._recording) this._startLiveRefresh();
+            // Keep watching while idle too. Otherwise a dashboard opened
+            // before the robot starts would never discover its new recording
+            // session and could not switch itself into live mode.
+            this._startLiveRefresh();
         } catch (err) {
             this._fail(err.message || String(err));
         } finally {
@@ -792,7 +795,7 @@ class OpenNeatoReplayCard extends HTMLElement {
     }
 
     async _refreshLive() {
-        if (this._loading || !this._recording || !this._selectedName) return;
+        if (this._loading || !this._selectedName) return;
         try {
             const listing = await this._hass.callWS({
                 type: "openneato/sessions",
@@ -802,9 +805,17 @@ class OpenNeatoReplayCard extends HTMLElement {
             this._sessions = listing.sessions || [];
             this._renderPicker();
             this._picker.value = this._selectedName;
+            const recording = this._sessions.find((s) => s.recording);
+            if (!this._recording && recording) {
+                // Follow a fresh run automatically, matching the old map
+                // cameras' state-driven transition from idle to live view.
+                await this._selectSession(recording.name);
+                return;
+            }
             const live = (listing.sessions || []).find((s) => s.name === this._selectedName);
             this._delBtn.disabled = Boolean(live && live.recording);
             if (!live || !live.recording) {
+                if (!this._recording) return;
                 // The robot has docked. Fetch the final, cacheable version one
                 // time and leave it resting at the completed map.
                 this._recording = false;
