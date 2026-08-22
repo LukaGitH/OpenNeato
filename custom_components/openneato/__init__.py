@@ -42,6 +42,9 @@ PLATFORMS: list[Platform] = [
     Platform.SWITCH,
     Platform.NUMBER,
     Platform.BUTTON,
+    # Keep entity-backed map cameras for the device page's built-in
+    # "Add to dashboard" flow; the replay card remains the richer option.
+    Platform.CAMERA,
     # Platform.CAMERA is deliberately absent. The "LIDAR map" and "Cleaning
     # replay" cameras were server-rendered PNG/GIF snapshots; the canvas card
     # in www/openneato-replay-card.js supersedes both, drawing from the
