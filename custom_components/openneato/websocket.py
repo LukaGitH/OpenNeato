@@ -103,6 +103,10 @@ def _floorplan_payload(hass: HomeAssistant, entry_id: str) -> dict[str, Any] | N
     {
         vol.Required("type"): "openneato/sessions",
         vol.Optional("entry_id"): str,
+        # The replay card asks for a fresh listing while a clean is active so
+        # it can discover the recording file without waiting for the normal
+        # coordinator cycle.
+        vol.Optional("refresh", default=False): bool,
     }
 )
 @websocket_api.async_response
@@ -120,6 +124,11 @@ async def ws_list_sessions(
 
     coordinator = data["coordinator"]
     history = (coordinator.data or {}).get("history")
+    if msg["refresh"]:
+        try:
+            history = await data["api"].get_history()
+        except Exception as err:  # noqa: BLE001 -- retain the last good listing
+            _LOGGER.debug("Replay: live history refresh failed: %s", err)
     if not isinstance(history, list):
         connection.send_error(msg["id"], "unavailable", "No cleaning history available")
         return
@@ -165,6 +174,9 @@ def _session_start(session: dict[str, Any]) -> float:
         vol.Required("type"): "openneato/session",
         vol.Required("name"): str,
         vol.Optional("entry_id"): str,
+        # A recording file changes continuously and must never be served from
+        # the completed-session cache.
+        vol.Optional("live", default=False): bool,
     }
 )
 @websocket_api.async_response
@@ -184,7 +196,7 @@ async def ws_get_session(
     cache: dict[tuple[str, str], dict[str, Any]] = hass.data.setdefault(DOMAIN, {}).setdefault(
         CACHE_KEY, {}
     )
-    cached = cache.get((entry_id, name))
+    cached = None if msg["live"] else cache.get((entry_id, name))
     if cached is not None:
         connection.send_result(msg["id"], {**cached, "floorplan": _floorplan_payload(hass, entry_id)})
         return
@@ -215,7 +227,7 @@ async def ws_get_session(
         return
 
     # Only completed sessions are worth caching -- a recording one grows.
-    if not _is_recording(data["coordinator"], name):
+    if not msg["live"] and not _is_recording(data["coordinator"], name):
         if len(cache) >= _CACHE_MAX:
             cache.pop(next(iter(cache)))
         cache[(entry_id, name)] = parsed

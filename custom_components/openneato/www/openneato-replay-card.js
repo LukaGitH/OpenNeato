@@ -12,6 +12,7 @@
  */
 
 const CARD_VERSION = "1.0.0";
+const LIVE_REFRESH_MS = 2000;
 
 // Breathing room around the fitted map, in CSS pixels. Kept small: the fit
 // already leaves slack wherever the run is not the shape of the card, and
@@ -223,6 +224,8 @@ class OpenNeatoReplayCard extends HTMLElement {
         this._error = null;
         this._floorplanImg = null;
         this._floorplanKey = null;
+        this._liveTimer = null;
+        this._recording = false;
 
         // Playback state. `_time` is the source of truth and is mutated by
         // the rAF loop directly — putting it in a re-render cycle is what
@@ -299,6 +302,7 @@ class OpenNeatoReplayCard extends HTMLElement {
 
     disconnectedCallback() {
         this._stopLoop();
+        this._stopLiveRefresh();
         if (this._resizeObserver) this._resizeObserver.disconnect();
     }
 
@@ -671,14 +675,15 @@ class OpenNeatoReplayCard extends HTMLElement {
                 ...(this._config.entry_id ? { entry_id: this._config.entry_id } : {}),
             });
             this._entryId = res.entry_id;
-            // Only completed sessions are replayable end to end.
-            this._sessions = (res.sessions || []).filter((s) => !s.recording);
+            // A recording session is useful too: it gives the dashboard the
+            // same live path/coverage behaviour the old camera entities had.
+            this._sessions = res.sessions || [];
             if (this._sessions.length === 0) {
                 this._fail("No completed cleaning sessions yet");
                 return;
             }
             this._renderPicker();
-            this._delBtn.disabled = false;
+            this._delBtn.disabled = Boolean(this._sessions[0] && this._sessions[0].recording);
             const wanted =
                 this._selectedName && this._sessions.some((s) => s.name === this._selectedName)
                     ? this._selectedName
@@ -725,7 +730,7 @@ class OpenNeatoReplayCard extends HTMLElement {
             .map((s) => {
                 const start = (s.session && s.session.time) || Number(String(s.name).split(".")[0]);
                 const area = s.summary && s.summary.areaCovered;
-                const label = `${formatDate(start)} — ${modeLabel(s.session && s.session.mode)}${
+                const label = `${s.recording ? "Live — " : ""}${formatDate(start)} — ${modeLabel(s.session && s.session.mode)}${
                     area ? ` · ${area} m²` : ""
                 }`;
                 return `<option value="${s.name}">${label}</option>`;
@@ -737,6 +742,8 @@ class OpenNeatoReplayCard extends HTMLElement {
         if (!name || this._loading) return;
         this._selectedName = name;
         this._picker.value = name;
+        this._recording = Boolean(this._sessions.find((s) => s.name === name)?.recording);
+        this._stopLiveRefresh();
         this._loading = true;
         this._pause();
         this._session = null;
@@ -746,6 +753,7 @@ class OpenNeatoReplayCard extends HTMLElement {
             const raw = await this._hass.callWS({
                 type: "openneato/session",
                 name,
+                ...(this._recording ? { live: true } : {}),
                 ...(this._entryId ? { entry_id: this._entryId } : {}),
             });
             this._session = new Session(raw);
@@ -756,17 +764,73 @@ class OpenNeatoReplayCard extends HTMLElement {
             this._setOverlay(null);
             this._enableControls(true);
 
-            // Rest on the completed map, like the web player: pressing play
-            // rewinds and replays from the beginning.
+            // A completed run rests at the end; a live run follows the newest
+            // pose and is refreshed below every two seconds.
             this._scrub.max = String(this._session.duration);
             this._totalEl.textContent = formatClock(this._session.duration);
             this._seek(this._session.duration);
 
             if (this._config.autoplay) this._restart(true);
+            if (this._recording) this._startLiveRefresh();
         } catch (err) {
             this._fail(err.message || String(err));
         } finally {
             this._loading = false;
+        }
+    }
+
+    _startLiveRefresh() {
+        this._stopLiveRefresh();
+        this._liveTimer = window.setInterval(() => this._refreshLive(), LIVE_REFRESH_MS);
+    }
+
+    _stopLiveRefresh() {
+        if (this._liveTimer !== null) {
+            window.clearInterval(this._liveTimer);
+            this._liveTimer = null;
+        }
+    }
+
+    async _refreshLive() {
+        if (this._loading || !this._recording || !this._selectedName) return;
+        try {
+            const listing = await this._hass.callWS({
+                type: "openneato/sessions",
+                refresh: true,
+                ...(this._entryId ? { entry_id: this._entryId } : {}),
+            });
+            this._sessions = listing.sessions || [];
+            this._renderPicker();
+            this._picker.value = this._selectedName;
+            const live = (listing.sessions || []).find((s) => s.name === this._selectedName);
+            this._delBtn.disabled = Boolean(live && live.recording);
+            if (!live || !live.recording) {
+                // The robot has docked. Fetch the final, cacheable version one
+                // time and leave it resting at the completed map.
+                this._recording = false;
+                this._stopLiveRefresh();
+                await this._selectSession(this._selectedName);
+                return;
+            }
+            const raw = await this._hass.callWS({
+                type: "openneato/session",
+                name: this._selectedName,
+                live: true,
+                ...(this._entryId ? { entry_id: this._entryId } : {}),
+            });
+            this._session = new Session(raw);
+            this._cov.sig = "";
+            this._trk.sig = "";
+            this._scrub.max = String(this._session.duration);
+            this._totalEl.textContent = formatClock(this._session.duration);
+            this._seek(this._session.duration);
+            await this._loadFloorplan(raw.floorplan);
+            this._renderStats();
+        } catch (err) {
+            // The bridge can be busy with a scan. The next two-second tick is
+            // allowed to retry; leaving the last frame visible is friendlier
+            // than replacing it with an error overlay.
+            console.debug("openneato-replay-card: live refresh failed", err);
         }
     }
 
