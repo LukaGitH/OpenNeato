@@ -249,17 +249,30 @@ def render_replay_map(data: dict[str, Any], recording: bool = False) -> bytes | 
     def point(x: float, y: float) -> tuple[float, float]:
         return offset_x + (x - min_x) * scale, offset_y + (max_y - y) * scale
 
-    image = Image.new("RGBA", (size, size), HISTORY_BG_COLOR + (255,))
+    def blend(color: tuple[int, int, int, int]) -> tuple[int, int, int]:
+        """Flatten an RGBA overlay onto the fixed dark map background."""
+        alpha = color[3] / 255
+        return tuple(
+            round(channel * alpha + background * (1 - alpha))
+            for channel, background in zip(color[:3], HISTORY_BG_COLOR)
+        )
+
+    image = Image.new("RGB", (size, size), HISTORY_BG_COLOR)
     draw = ImageDraw.Draw(image)
+    grid_color = blend(HISTORY_GRID_COLOR)
+    coverage_color = blend(HISTORY_COVERAGE_COLOR)
+    path_color = blend(HISTORY_PATH_COLOR)
+    start_color = blend(HISTORY_START_COLOR)
+    end_color = blend(HISTORY_END_COLOR)
     grid_x = math.floor(min_x / HISTORY_GRID_STEP_M) * HISTORY_GRID_STEP_M
     while grid_x <= max_x:
         x, _ = point(grid_x, min_y)
-        draw.line((x, pad, x, size - pad), fill=HISTORY_GRID_COLOR, width=1)
+        draw.line((x, pad, x, size - pad), fill=grid_color, width=1)
         grid_x += HISTORY_GRID_STEP_M
     grid_y = math.floor(min_y / HISTORY_GRID_STEP_M) * HISTORY_GRID_STEP_M
     while grid_y <= max_y:
         _, y = point(min_x, grid_y)
-        draw.line((pad, y, size - pad, y), fill=HISTORY_GRID_COLOR, width=1)
+        draw.line((pad, y, size - pad, y), fill=grid_color, width=1)
         grid_y += HISTORY_GRID_STEP_M
 
     cell_px = HISTORY_CELL_SIZE_M * scale
@@ -271,7 +284,7 @@ def render_replay_map(data: dict[str, Any], recording: bool = False) -> bytes | 
         )
         draw.rectangle(
             (x - cell_px / 2, y - cell_px / 2, x + cell_px / 2, y + cell_px / 2),
-            fill=HISTORY_COVERAGE_COLOR,
+            fill=coverage_color,
         )
 
     coords = [
@@ -279,18 +292,18 @@ def render_replay_map(data: dict[str, Any], recording: bool = False) -> bytes | 
         for i in range(0, len(path) - 3, 4)
     ]
     if len(coords) > 1:
-        draw.line(coords, fill=HISTORY_PATH_COLOR, width=2, joint="curve")
+        draw.line(coords, fill=path_color, width=2, joint="curve")
     if coords:
         sx, sy = coords[0]
-        draw.ellipse((sx - 5, sy - 5, sx + 5, sy + 5), fill=HISTORY_START_COLOR)
+        draw.ellipse((sx - 5, sy - 5, sx + 5, sy + 5), fill=start_color)
         ex, ey = coords[-1]
         if recording:
-            draw.ellipse((ex - 6, ey - 6, ex + 6, ey + 6), outline=HISTORY_START_COLOR, width=3)
+            draw.ellipse((ex - 6, ey - 6, ex + 6, ey + 6), outline=start_color, width=3)
         else:
-            draw.ellipse((ex - 5, ey - 5, ex + 5, ey + 5), fill=HISTORY_END_COLOR)
+            draw.ellipse((ex - 5, ey - 5, ex + 5, ey + 5), fill=end_color)
 
     output = io.BytesIO()
-    image.convert("RGB").save(output, format="PNG", optimize=True)
+    image.save(output, format="PNG", optimize=True)
     return output.getvalue()
 
 
