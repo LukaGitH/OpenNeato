@@ -16,13 +16,28 @@ connection to the browser.
 
 from __future__ import annotations
 
+import io
 import json
 import logging
 import math
 import re
 from typing import Any
 
-from .const import HISTORY_CELL_SIZE_M, HISTORY_ROBOT_DIAMETER_M
+from PIL import Image, ImageDraw
+
+from .const import (
+    HISTORY_BG_COLOR,
+    HISTORY_CELL_SIZE_M,
+    HISTORY_COVERAGE_COLOR,
+    HISTORY_END_COLOR,
+    HISTORY_GRID_COLOR,
+    HISTORY_GRID_STEP_M,
+    HISTORY_IMAGE_SIZE,
+    HISTORY_PAD_PX,
+    HISTORY_PATH_COLOR,
+    HISTORY_ROBOT_DIAMETER_M,
+    HISTORY_START_COLOR,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -202,6 +217,81 @@ def build_replay_session(
         "coverage": coverage,
         "recharges": recharges,
     }
+
+
+def render_replay_map(data: dict[str, Any], recording: bool = False) -> bytes | None:
+    """Render the recorded cleaning path and coverage as a static PNG.
+
+    The interactive card draws this same payload on a canvas. This compact
+    server renderer keeps the built-in HA ``Cleaning replay`` camera useful
+    too, instead of incorrectly showing the sparse LIDAR wall layer.
+    """
+    bounds = data.get("bounds")
+    path = data.get("path") or []
+    if not isinstance(bounds, dict) or len(path) < 8:
+        return None
+
+    try:
+        min_x, max_x = float(bounds["minX"]), float(bounds["maxX"])
+        min_y, max_y = float(bounds["minY"]), float(bounds["maxY"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    span_x, span_y = max_x - min_x, max_y - min_y
+    if span_x <= 0 or span_y <= 0:
+        return None
+
+    size = HISTORY_IMAGE_SIZE
+    pad = HISTORY_PAD_PX
+    scale = min((size - pad * 2) / span_x, (size - pad * 2) / span_y)
+    offset_x = pad + (size - pad * 2 - span_x * scale) / 2
+    offset_y = pad + (size - pad * 2 - span_y * scale) / 2
+
+    def point(x: float, y: float) -> tuple[float, float]:
+        return offset_x + (x - min_x) * scale, offset_y + (max_y - y) * scale
+
+    image = Image.new("RGBA", (size, size), HISTORY_BG_COLOR + (255,))
+    draw = ImageDraw.Draw(image)
+    grid_x = math.floor(min_x / HISTORY_GRID_STEP_M) * HISTORY_GRID_STEP_M
+    while grid_x <= max_x:
+        x, _ = point(grid_x, min_y)
+        draw.line((x, pad, x, size - pad), fill=HISTORY_GRID_COLOR, width=1)
+        grid_x += HISTORY_GRID_STEP_M
+    grid_y = math.floor(min_y / HISTORY_GRID_STEP_M) * HISTORY_GRID_STEP_M
+    while grid_y <= max_y:
+        _, y = point(min_x, grid_y)
+        draw.line((pad, y, size - pad, y), fill=HISTORY_GRID_COLOR, width=1)
+        grid_y += HISTORY_GRID_STEP_M
+
+    cell_px = HISTORY_CELL_SIZE_M * scale
+    coverage = data.get("coverage") or []
+    for i in range(0, len(coverage) - 2, 3):
+        x, y = point(
+            float(coverage[i]) * HISTORY_CELL_SIZE_M,
+            float(coverage[i + 1]) * HISTORY_CELL_SIZE_M,
+        )
+        draw.rectangle(
+            (x - cell_px / 2, y - cell_px / 2, x + cell_px / 2, y + cell_px / 2),
+            fill=HISTORY_COVERAGE_COLOR,
+        )
+
+    coords = [
+        point(float(path[i]), float(path[i + 1]))
+        for i in range(0, len(path) - 3, 4)
+    ]
+    if len(coords) > 1:
+        draw.line(coords, fill=HISTORY_PATH_COLOR, width=2, joint="curve")
+    if coords:
+        sx, sy = coords[0]
+        draw.ellipse((sx - 5, sy - 5, sx + 5, sy + 5), fill=HISTORY_START_COLOR)
+        ex, ey = coords[-1]
+        if recording:
+            draw.ellipse((ex - 6, ey - 6, ex + 6, ey + 6), outline=HISTORY_START_COLOR, width=3)
+        else:
+            draw.ellipse((ex - 5, ey - 5, ex + 5, ey + 5), fill=HISTORY_END_COLOR)
+
+    output = io.BytesIO()
+    image.convert("RGB").save(output, format="PNG", optimize=True)
+    return output.getvalue()
 
 
 def _pair_recharges(
