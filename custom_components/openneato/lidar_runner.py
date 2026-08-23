@@ -71,8 +71,17 @@ HEALTH_GRACE = 600.0
 BACKOFF_RATIO = 0.55
 
 # uiState substrings, matching camera.py.
-CLEANING = ("CLEANINGRUNNING", "CLEANINGPAUSED", "CLEANINGSUSPENDED", "DOCKING")
-ACTIVE = ("CLEANINGRUNNING",)
+# Manual clean is TestMode on the robot, which the bridge deliberately exposes
+# as MANUALCLEANING.  Its LDS is explicitly enabled, so it can feed the same
+# live map as a normal house or spot clean.
+CLEANING = (
+    "CLEANINGRUNNING",
+    "CLEANINGPAUSED",
+    "CLEANINGSUSPENDED",
+    "DOCKING",
+    "MANUALCLEANING",
+)
+ACTIVE = ("CLEANINGRUNNING", "MANUALCLEANING")
 
 
 class LidarMapRunner:
@@ -88,6 +97,7 @@ class LidarMapRunner:
         self._captures: list[tuple[float, float, float, list[tuple[int, int]]]] = []
         self._live_walls: dict[tuple[int, int], int] = {}
         self._live_floor: set[tuple[int, int]] = set()
+        self._live_revision = 0
         self._collecting = False
         self._unsub_timer = None
         self._unsub_coordinator = None
@@ -133,6 +143,7 @@ class LidarMapRunner:
         self._captures = []
         self._live_walls = {}
         self._live_floor = set()
+        self._live_revision = 0
         self._interval = POLL_INTERVAL
         self._last_health = time.monotonic()
         self._health_start = time.monotonic()
@@ -208,6 +219,10 @@ class LidarMapRunner:
                 for cell in project_scan(x, y, theta, points):
                     self._live_walls[cell] = self._live_walls.get(cell, 0) + 1
                 self._live_floor.update(stamp_floor(x, y))
+                # Do not use the number of wall cells as the revision: once a
+                # robot revisits an already-seen area, that number can remain
+                # unchanged even though the live PNG has new observations.
+                self._live_revision += 1
         except Exception as err:  # noqa: BLE001 -- one bad read must never end a run
             _LOGGER.debug("LIDAR mapping: sample failed (%s)", err)
         finally:
@@ -271,6 +286,7 @@ class LidarMapRunner:
         captures, self._captures = self._captures, []
         self._live_walls = {}
         self._live_floor = set()
+        self._live_revision = 0
         if len(captures) < MIN_CAPTURES:
             _LOGGER.info(
                 "LIDAR mapping: only %d captures, too thin to merge", len(captures)
@@ -354,7 +370,7 @@ class LidarMapRunner:
     @property
     def live_revision(self) -> int:
         """A cache-busting token that changes with every active scan."""
-        return len(self._live_walls) if self._collecting else 0
+        return self._live_revision if self._collecting else 0
 
     def alignment(self, session_name: str) -> tuple[int, int, int] | None:
         """How this session was corrected onto the map, if it was merged.
